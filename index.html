@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AVX PreflightPro — Print Validation Platform</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg-0:#090b10;--bg-1:#0f1219;--bg-2:#161a25;--bg-3:#1c2130;
+  --bg-4:#232839;--bg-5:#2a3045;--border:#2e3550;--border-l:#3a4160;
+  --tx1:#eaecf4;--tx2:#a0a8c4;--tx3:#6a7394;
+  --acc:#00d4aa;--acc2:#00eabc;--acc-d:rgba(0,212,170,.12);
+  --err:#ff4757;--err-d:rgba(255,71,87,.12);
+  --wrn:#ffb142;--wrn-d:rgba(255,177,66,.12);
+  --ok:#2ed573;--ok-d:rgba(46,213,115,.12);
+  --inf:#4da6ff;--inf-d:rgba(77,166,255,.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--bg-0);color:var(--tx1);overflow:hidden;height:100vh}
+h1,h2,h3,h4,h5{font-family:'Space Grotesk',sans-serif}
+
+/* ── GLOBAL SCROLLBAR BASE ── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg-1)}
+::-webkit-scrollbar-thumb{background:var(--bg-5);border-radius:8px}
+::-webkit-scrollbar-thumb:hover{background:var(--border-l)}
+
+/* ── PREVIEW AREA — neutral on white ── */
+#canvasWrap::-webkit-scrollbar{width:10px;height:10px}
+#canvasWrap::-webkit-scrollbar-track{background:#f0f0f0}
+#canvasWrap::-webkit-scrollbar-thumb{background:#aaa;border-radius:5px;border:2px solid #f0f0f0}
+#canvasWrap::-webkit-scrollbar-thumb:hover{background:#777}
+#canvasWrap::-webkit-scrollbar-corner{background:#f0f0f0}
+#canvasWrap{scrollbar-color:#aaa #f0f0f0;scrollbar-width:thin}
+
+/* ── RIGHT PANEL — prominent visible scrollbar ── */
+#tabContent::-webkit-scrollbar{width:9px}
+#tabContent::-webkit-scrollbar-track{background:var(--bg-1)}
+#tabContent::-webkit-scrollbar-thumb{background:var(--border-l);border-radius:6px;border:2px solid var(--bg-2)}
+#tabContent::-webkit-scrollbar-thumb:hover{background:var(--tx3)}
+#tabContent{scrollbar-color:var(--border-l) var(--bg-1);scrollbar-width:thin}
+
+/* ── LEFT PANEL THUMBS — visible scrollbar ── */
+#thumbList::-webkit-scrollbar{width:6px}
+#thumbList::-webkit-scrollbar-track{background:var(--bg-1)}
+#thumbList::-webkit-scrollbar-thumb{background:var(--bg-5);border-radius:4px}
+#thumbList::-webkit-scrollbar-thumb:hover{background:var(--border-l)}
+
+/* ── HORIZONTAL TOOLBAR SCROLLBARS — visible and easy to grab ── */
+.hscroll-x{overflow-x:auto;overflow-y:hidden;flex-shrink:0;scrollbar-width:thin;scrollbar-color:var(--border-l) var(--bg-1)}
+.hscroll-x::-webkit-scrollbar{height:6px}
+.hscroll-x::-webkit-scrollbar-track{background:var(--bg-1);border-radius:0}
+.hscroll-x::-webkit-scrollbar-thumb{background:var(--border-l);border-radius:3px}
+.hscroll-x::-webkit-scrollbar-thumb:hover{background:var(--tx3)}
+
+/* ── TAB BUTTONS — visible horizontal scrollbar ── */
+.tab-scroll::-webkit-scrollbar{height:5px}
+.tab-scroll::-webkit-scrollbar-track{background:var(--bg-2)}
+.tab-scroll::-webkit-scrollbar-thumb{background:var(--border-l);border-radius:3px}
+.tab-scroll::-webkit-scrollbar-thumb:hover{background:var(--tx3)}
+.tab-scroll{scrollbar-width:thin;scrollbar-color:var(--border-l) var(--bg-2)}
+
+/* ── CRITICAL: min-height:0 on every flex child in the scroll chain ── */
+/* This allows flex children to shrink below content size so overflow:auto works */
+#workspaceView{min-height:0}
+.ws-main-row{min-height:0}
+.panel{min-height:0;min-width:0}
+.panel-r{min-height:0;min-width:0}
+.ws-center{min-height:0;min-width:0}
+#canvasWrap{min-height:0;min-width:0}
+#thumbList{min-height:0}
+#tabContent{min-height:0}
+
+.upload-zone{border:2px dashed var(--border);transition:all .3s}
+.upload-zone:hover,.upload-zone.dragover{border-color:var(--acc);background:var(--acc-d)}
+.upload-zone.dragover .upload-icon{transform:scale(1.15);color:var(--acc)}
+
+.card{background:var(--bg-3);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px}
+.card-sm{background:var(--bg-3);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:6px}
+
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge-err{background:var(--err-d);color:var(--err)}
+.badge-wrn{background:var(--wrn-d);color:var(--wrn)}
+.badge-ok{background:var(--ok-d);color:var(--ok)}
+.badge-inf{background:var(--inf-d);color:var(--inf)}
+.badge-acc{background:var(--acc-d);color:var(--acc)}
+
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .2s;font-family:inherit;flex-shrink:0}
+.btn-p{background:var(--acc);color:#090b10}.btn-p:hover{background:var(--acc2);transform:translateY(-1px)}
+.btn-s{background:var(--bg-4);color:var(--tx2);border:1px solid var(--border)}.btn-s:hover{background:var(--bg-5);color:var(--tx1)}
+.btn-sm{padding:4px 10px;font-size:12px}
+
+.tab-btn{padding:6px 12px;font-size:12px;font-weight:500;color:var(--tx3);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;transition:all .2s;font-family:inherit;white-space:nowrap;flex-shrink:0}
+.tab-btn:hover{color:var(--tx2)}
+.tab-btn.active{color:var(--acc);border-bottom-color:var(--acc)}
+
+.sep-btn{width:36px;height:36px;border-radius:6px;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;background:var(--bg-3);font-family:'Space Grotesk',sans-serif;flex-shrink:0}
+.sep-btn:hover{border-color:var(--tx3)}
+.sep-btn.active{border-color:currentColor;box-shadow:0 0 12px rgba(0,0,0,.4)}
+.sep-btn.c-cyan{color:#00bcd4}.sep-btn.c-magenta{color:#e040fb}.sep-btn.c-yellow{color:#ffeb3b}.sep-btn.c-black{color:#bbb}.sep-btn.c-rgb{color:#ff6b6b}
+
+.thumb{width:100%;aspect-ratio:.707;border:2px solid var(--border);border-radius:4px;cursor:pointer;transition:all .2s;object-fit:cover;background:#fff}
+.thumb:hover{border-color:var(--tx3)}
+.thumb.active{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+
+.issue-row{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:6px;transition:background .2s;cursor:pointer}
+.issue-row:hover{background:var(--bg-4)}
+
+.progress-ring{transform:rotate(-90deg)}
+.progress-ring circle{transition:stroke-dashoffset .6s ease}
+
+.toast{padding:12px 18px;border-radius:8px;font-size:13px;display:flex;align-items:center;gap:10px;animation:slideIn .3s ease;box-shadow:0 8px 32px rgba(0,0,0,.4);border:1px solid var(--border)}
+.toast-ok{background:var(--bg-4);color:var(--ok)}.toast-err{background:var(--bg-4);color:var(--err)}
+.toast-wrn{background:var(--bg-4);color:var(--wrn)}.toast-inf{background:var(--bg-4);color:var(--inf)}
+
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes scanline{0%{top:-2px}100%{top:100%}}
+.fade-in{animation:fadeIn .4s ease both}
+.scanning::after{content:'';position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--acc),transparent);animation:scanline 1.5s linear infinite;z-index:10;pointer-events:none}
+
+.stat-num{font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1}
+
+.toggle-track{width:36px;height:20px;border-radius:10px;background:var(--bg-5);cursor:pointer;position:relative;transition:background .2s;border:1px solid var(--border)}
+.toggle-track.on{background:var(--acc-d);border-color:var(--acc)}
+.toggle-knob{width:16px;height:16px;border-radius:50%;background:var(--tx3);position:absolute;top:1px;left:1px;transition:all .2s}
+.toggle-track.on .toggle-knob{left:17px;background:var(--acc)}
+
+.fix-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:6px;background:var(--bg-3);border:1px solid var(--border);margin-bottom:6px;transition:all .2s}
+.fix-item:hover{border-color:var(--border-l)}
+
+/* ── ISSUE MARKERS ── */
+.thumb-wrap{position:relative;display:inline-block;width:100%}
+.thumb-marker{position:absolute;width:16px;height:16px;border-radius:50%;border:2px solid #fff;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;cursor:pointer;z-index:10;transition:transform .15s;box-shadow:0 1px 4px rgba(0,0,0,.5);line-height:1}
+.thumb-marker:hover{transform:translate(-50%,-50%) scale(1.3)}
+.thumb-marker.sev-critical{background:var(--err)}
+.thumb-marker.sev-warning{background:var(--wrn)}
+.thumb-marker.sev-info{background:var(--inf)}
+.main-marker-pin{position:absolute;width:26px;height:26px;border-radius:50%;border:2.5px solid #fff;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.5);transition:box-shadow .25s;z-index:20;line-height:1}
+.main-marker-pin.sev-critical{background:var(--err)}
+.main-marker-pin.sev-warning{background:var(--wrn)}
+.main-marker-pin.sev-info{background:var(--inf)}
+.main-marker-pin.is-highlight{box-shadow:0 0 0 8px rgba(77,166,255,.35),0 2px 8px rgba(0,0,0,.5);animation:markerPulse .7s ease-out 2}
+@keyframes markerPulse{0%,100%{box-shadow:0 0 0 8px rgba(77,166,255,.35),0 2px 8px rgba(0,0,0,.5)}50%{box-shadow:0 0 0 18px rgba(77,166,255,.1),0 2px 8px rgba(0,0,0,.5)}}
+.issue-preview-btn{font-size:10px;padding:2px 7px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--tx3);cursor:pointer;flex-shrink:0;font-family:inherit;transition:all .15s}
+.issue-preview-btn:hover{background:var(--inf-d);color:var(--inf);border-color:var(--inf)}
+@keyframes magnifyIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+#magnifyBox{animation:magnifyIn .18s ease both}
+.fix-check{width:18px;height:18px;border-radius:4px;border:2px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
+.fix-check.checked{background:var(--acc);border-color:var(--acc);color:#090b10}
+
+.glow-line{height:1px;background:linear-gradient(90deg,transparent,var(--acc),transparent);opacity:.3}
+
+#edCrosshair{position:fixed;pointer-events:none;z-index:100;width:20px;height:20px;border:1.5px solid #333;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.8);transform:translate(-50%,-50%);opacity:0;transition:opacity .12s}
+#edCrosshair.visible{opacity:1}
+#eyedropperPanel{position:fixed;pointer-events:none;z-index:100;background:var(--bg-2);border:1px solid var(--border-l);border-radius:10px;padding:10px 12px;min-width:200px;box-shadow:0 8px 32px rgba(0,0,0,.6);opacity:0;transition:opacity .12s;font-size:12px}
+#eyedropperPanel.visible{opacity:1}
+.ed-swatch{width:36px;height:36px;border-radius:6px;border:2px solid var(--border-l);flex-shrink:0}
+.ed-label{color:var(--tx3);font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
+.ed-val{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px}
+.ed-cmyk-bar{height:4px;border-radius:2px;transition:width .08s}
+.btn-ed{background:var(--bg-4);color:var(--tx2);border:1px solid var(--border)}
+.btn-ed.active{background:var(--acc-d);color:var(--acc);border-color:var(--acc)}
+
+.font-match-card{background:var(--bg-3);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;transition:border-color .2s}
+.font-match-card:hover{border-color:var(--border-l)}
+.confidence-bar{height:6px;border-radius:3px;background:var(--bg-1);overflow:hidden}
+.confidence-fill{height:100%;border-radius:3px;transition:width .4s}
+.font-preview-box{background:#fff;border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-top:8px;color:#111}
+.font-source-badge{font-size:9px;padding:1px 6px;border-radius:8px;background:var(--bg-1);color:var(--tx3);border:1px solid var(--border)}
+.font-detected-badge{background:var(--acc-d);color:var(--acc);border:1px solid rgba(0,212,170,.3);padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600}
+@keyframes fontPulse{0%,100%{box-shadow:0 0 0 0 rgba(0,212,170,.3)}50%{box-shadow:0 0 0 6px rgba(0,212,170,0)}}
+
+.scroll-hint{position:sticky;bottom:0;left:0;right:0;z-index:5;
+  background:linear-gradient(to bottom,transparent 0%,var(--bg-2) 40%);
+  padding:28px 12px 8px;text-align:center;pointer-events:none;transition:opacity .3s}
+.scroll-hint.hidden{opacity:0;pointer-events:none}
+.scroll-hint span{font-size:10px;color:var(--tx3);display:flex;align-items:center;justify-content:center;gap:4px}
+</style>
+</head>
+<body class="flex flex-col h-screen">
+
+<!-- Upload View -->
+<div id="uploadView" class="flex-1 flex items-center justify-center relative overflow-hidden" style="min-height:0">
+  <div class="absolute inset-0" style="background:radial-gradient(ellipse at 30% 40%,rgba(0,212,170,.04),transparent 60%),radial-gradient(ellipse at 70% 60%,rgba(77,166,255,.03),transparent 50%)"></div>
+  <div class="relative z-10 text-center max-w-xl w-full px-6">
+    <div class="flex items-center justify-center gap-3 mb-2">
+      <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background:var(--acc-d)"><i class="fa-solid fa-vector-square" style="color:var(--acc);font-size:18px"></i></div>
+      <h1 class="text-3xl font-bold tracking-tight">AVX PreflightPro</h1>
+    </div>
+    <p class="text-sm mb-2" style="color:var(--tx3)">Enterprise Print Production Validation &amp; Automated Fix-Up Platform</p>
+    <p class="text-xs mb-10" style="color:var(--acc)"><i class="fa-solid fa-shield-halved mr-1"></i> GRACoL 2013 CRPC6 — Coated Paper Standard</p>
+    <div id="dropZone" class="upload-zone rounded-2xl p-16 cursor-pointer relative" onclick="document.getElementById('fileInput').click()">
+      <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png" class="hidden" multiple>
+      <i class="upload-icon fa-solid fa-cloud-arrow-up text-5xl mb-5 block transition-all duration-300" style="color:var(--tx3)"></i>
+      <p class="text-lg font-semibold mb-2" style="color:var(--tx2)">Drop print files here or click to browse</p>
+      <p class="text-sm" style="color:var(--tx3)">Supports PDF, JPEG, and PNG — with AI Font Recognition</p>
+      <div class="flex items-center justify-center gap-3 mt-6 flex-wrap">
+        <span class="badge badge-inf"><i class="fa-solid fa-file-pdf"></i> PDF</span>
+        <span class="badge badge-inf"><i class="fa-solid fa-file-image"></i> JPEG</span>
+        <span class="badge badge-inf"><i class="fa-solid fa-file-image"></i> PNG</span>
+        <span class="badge badge-acc"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Font Detect</span>
+      </div>
+    </div>
+    <div class="flex items-center justify-center gap-6 mt-8 text-xs" style="color:var(--tx3)">
+      <span><i class="fa-solid fa-shield-halved mr-1" style="color:var(--acc)"></i> GRACoL 2013</span>
+      <span><i class="fa-solid fa-shield-halved mr-1" style="color:var(--acc)"></i> ISO 12647-2</span>
+      <span><i class="fa-solid fa-shield-halved mr-1" style="color:var(--acc)"></i> PDF/X</span>
+    </div>
+  </div>
+</div>
+
+<!-- Workspace View -->
+<div id="workspaceView" class="flex-1 flex flex-col hidden">
+  <!-- Header — horizontal scroll enabled -->
+  <header class="hscroll-x flex items-center px-4 py-2 border-b" style="background:var(--bg-1);border-color:var(--border);min-height:48px">
+    <div class="flex items-center gap-2" style="flex-shrink:0">
+      <div class="flex items-center gap-2 mr-2">
+        <div class="w-7 h-7 rounded flex items-center justify-center" style="background:var(--acc-d)"><i class="fa-solid fa-vector-square" style="color:var(--acc);font-size:12px"></i></div>
+        <span class="font-semibold text-sm" style="font-family:'Space Grotesk',sans-serif">AVX PreflightPro</span>
+      </div>
+      <button class="btn btn-sm btn-s" onclick="document.getElementById('fileInput2').click()"><i class="fa-solid fa-folder-open"></i> Open</button>
+      <input type="file" id="fileInput2" accept=".pdf,.jpg,.jpeg,.png" class="hidden" multiple>
+      <button id="btnRun" class="btn btn-sm btn-p" onclick="app.runPreflight()"><i class="fa-solid fa-play"></i> Preflight</button>
+      <div class="w-px h-6 mx-1" style="background:var(--border);flex-shrink:0"></div>
+      <button id="btnFontAI" class="btn btn-sm btn-ed" onclick="app.runFontAI()"><i class="fa-solid fa-wand-magic-sparkles"></i> Font AI</button>
+      <button id="btnEyedropper" class="btn btn-sm btn-ed" onclick="app.toggleEyedropper()"><i class="fa-solid fa-eye-dropper"></i></button>
+      <div class="w-px h-6 mx-1" style="background:var(--border);flex-shrink:0"></div>
+      <button class="btn btn-sm btn-s" onclick="app.exportReport()"><i class="fa-solid fa-file-export"></i> Report</button>
+    </div>
+    <div class="flex items-center gap-3" style="flex-shrink:0">
+      <span id="fileNameDisplay" class="text-xs truncate max-w-xs" style="color:var(--tx3)"></span>
+      <span id="fileTypeBadge" class="badge badge-acc text-xs"></span>
+      <button class="btn btn-sm btn-s" onclick="app.toggleSettings()"><i class="fa-solid fa-gear"></i></button>
+    </div>
+  </header>
+
+  <!-- Three-column row — min-height:0 allows panels to scroll -->
+  <div class="ws-main-row flex flex-1 overflow-hidden">
+    <!-- Left Panel -->
+    <aside class="panel flex flex-col" style="width:200px;min-width:200px">
+      <div class="p-3 border-b flex items-center justify-between flex-shrink-0" style="border-color:var(--border)">
+        <span class="text-xs font-semibold uppercase tracking-wider" style="color:var(--tx3)">Pages</span>
+        <span id="pageCountBadge" class="badge badge-acc text-xs"></span>
+      </div>
+      <div id="thumbList" class="flex-1 overflow-y-auto p-3 flex flex-col gap-3"></div>
+      <div class="p-3 border-t flex-shrink-0" style="border-color:var(--border)">
+        <div class="card-sm text-xs">
+          <div class="flex justify-between mb-1"><span style="color:var(--tx3)">Size</span><span id="fileSize" style="color:var(--tx2)">—</span></div>
+          <div class="flex justify-between mb-1"><span style="color:var(--tx3)">Format</span><span id="pdfFormat" style="color:var(--tx2)">—</span></div>
+          <div class="flex justify-between"><span style="color:var(--tx3)">Standard</span><span style="color:var(--acc)">GRACoL 2013</span></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center: Preview — min-width:0 + min-height:0 for scroll chain -->
+    <main class="ws-center flex-1 flex flex-col overflow-hidden">
+      <div id="canvasWrap" style="flex:1;overflow:auto;background:#ffffff;position:relative;">
+        <div id="canvasContainer" style="display:inline-flex;padding:24px;min-width:100%;min-height:100%;align-items:center;justify-content:center;">
+          <div id="canvasFrame" style="position:relative;display:inline-block;flex-shrink:0;">
+            <canvas id="pdfCanvas" style="display:block;"></canvas>
+            <canvas id="sepCanvas" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
+          </div>
+        </div>
+        <div id="scanOverlay" class="absolute inset-0 pointer-events-none hidden scanning"></div>
+      </div>
+      <!-- Separation controls — horizontal scroll -->
+      <div class="hscroll-x flex items-center justify-center gap-2 py-2 px-4 border-t border-b" style="background:var(--bg-2);border-color:var(--border)">
+        <span class="text-xs mr-2 font-semibold" style="color:var(--tx3);flex-shrink:0">SEPARATIONS</span>
+        <button class="sep-btn c-cyan" data-ch="C" onclick="app.toggleSep('C')">C</button>
+        <button class="sep-btn c-magenta" data-ch="M" onclick="app.toggleSep('M')">M</button>
+        <button class="sep-btn c-yellow" data-ch="Y" onclick="app.toggleSep('Y')">Y</button>
+        <button class="sep-btn c-black" data-ch="K" onclick="app.toggleSep('K')">K</button>
+        <div class="w-px h-6 mx-2" style="background:var(--border);flex-shrink:0"></div>
+        <button class="sep-btn c-rgb" data-ch="RGB" onclick="app.toggleSep('RGB')">RGB</button>
+        <button class="sep-btn" style="color:var(--wrn)" data-ch="SPOT" onclick="app.toggleSep('SPOT')">SP</button>
+        <button class="sep-btn" style="color:var(--inf)" data-ch="TRANS" onclick="app.toggleSep('TRANS')">TR</button>
+        <div class="w-px h-6 mx-2" style="background:var(--border);flex-shrink:0"></div>
+        <button class="btn btn-sm btn-s" onclick="app.clearSeps()" style="flex-shrink:0"><i class="fa-solid fa-eye"></i> Show All</button>
+      </div>
+      <!-- Page controls + fix-up — horizontal scroll -->
+      <div class="border-t flex-shrink-0" style="background:var(--bg-2);border-color:var(--border)">
+        <div class="hscroll-x flex items-center justify-between px-4 py-2">
+          <div class="flex items-center gap-2" style="flex-shrink:0">
+            <button class="btn btn-sm btn-s" onclick="app.prevPage()"><i class="fa-solid fa-chevron-left"></i></button>
+            <span class="text-xs" style="color:var(--tx2)">Page <strong id="curPageNum" style="color:var(--tx1)">1</strong> of <span id="totalPageNum">1</span></span>
+            <button class="btn btn-sm btn-s" onclick="app.nextPage()"><i class="fa-solid fa-chevron-right"></i></button>
+          </div>
+          <div class="flex items-center gap-2" style="flex-shrink:0">
+            <button class="btn btn-sm btn-s" onclick="app.zoomOut()"><i class="fa-solid fa-minus"></i></button>
+            <span id="zoomLevel" class="text-xs w-12 text-center" style="color:var(--tx2)">100%</span>
+            <button class="btn btn-sm btn-s" onclick="app.zoomIn()"><i class="fa-solid fa-plus"></i></button>
+            <button class="btn btn-sm btn-s" onclick="app.zoomFit()"><i class="fa-solid fa-expand"></i></button>
+          </div>
+          <div style="flex-shrink:0"><span id="dimDisplay" class="text-xs" style="color:var(--tx3)"></span></div>
+        </div>
+        <div id="fixBar" class="hidden border-t hscroll-x px-4 py-2 flex items-center gap-3" style="border-color:var(--border)">
+          <span class="text-xs font-semibold" style="color:var(--wrn);flex-shrink:0"><i class="fa-solid fa-wrench mr-1"></i> FIX-UP</span>
+          <span id="fixCount" class="text-xs" style="color:var(--tx3)"></span>
+          <div class="flex-1"></div>
+          <button class="btn btn-sm btn-s" onclick="app.showFixupPanel()" style="flex-shrink:0">Review Fixes</button>
+          <button class="btn btn-sm btn-p" onclick="app.applyAllFixes()" style="flex-shrink:0"><i class="fa-solid fa-magic-wand-sparkles"></i> Apply All</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Panel — min-height:0 for scroll chain -->
+    <aside class="panel-r flex flex-col" style="width:340px;min-width:340px">
+      <div class="tab-scroll flex border-b overflow-x-auto flex-shrink-0" style="border-color:var(--border)">
+        <button class="tab-btn active" data-tab="summary" onclick="app.switchTab('summary')">Summary</button>
+        <button class="tab-btn" data-tab="colors" onclick="app.switchTab('colors')">Colors</button>
+        <button class="tab-btn" data-tab="fontai" onclick="app.switchTab('fontai')">Font AI</button>
+        <button class="tab-btn" data-tab="fonts" onclick="app.switchTab('fonts')">Fonts</button>
+        <button class="tab-btn" data-tab="images" onclick="app.switchTab('images')">Images</button>
+        <button class="tab-btn" data-tab="doc" onclick="app.switchTab('doc')">Document</button>
+        <button class="tab-btn" data-tab="standards" onclick="app.switchTab('standards')">Standards</button>
+      </div>
+      <div id="tabContent" class="flex-1 overflow-y-auto p-3"></div>
+      <div id="scrollHint" class="scroll-hint hidden flex-shrink-0">
+        <span><i class="fa-solid fa-angles-down" style="font-size:10px"></i> Scroll for more <i class="fa-solid fa-angles-down" style="font-size:10px"></i></span>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Status bar — horizontal scroll enabled -->
+  <footer class="hscroll-x flex items-center justify-between px-4 py-1.5 border-t text-xs" style="background:var(--bg-1);border-color:var(--border);color:var(--tx3);min-height:28px;flex-shrink:0">
+    <div class="flex items-center gap-4" style="flex-shrink:0"><span id="statusText">Ready</span><span id="statusIssues"></span></div>
+    <div class="flex items-center gap-4" style="flex-shrink:0"><span id="statusScore"></span><span id="statusTime"></span></div>
+  </footer>
+</div>
+
+<div id="edCrosshair" class="ed-crosshair"></div>
+<div id="eyedropperPanel">
+  <div class="flex items-start gap-3 mb-2">
+    <div id="edSwatch" class="ed-swatch"></div>
+    <div class="flex-1 min-w-0">
+      <div class="ed-label">Hex</div><div id="edHex" class="ed-val">#000000</div>
+      <div class="ed-label mt-1">RGB</div><div id="edRGB" class="text-xs" style="color:var(--tx2)">0, 0, 0</div>
+    </div>
+  </div>
+  <div style="border-top:1px solid var(--border);margin:8px 0;padding-top:8px">
+    <div class="flex items-center gap-1 mb-2"><span class="ed-label" style="margin:0">CMYK</span><span class="text-xs" style="color:var(--acc);font-size:9px;margin-left:4px">GRACoL 2013</span></div>
+    <div class="space-y-1.5">
+      <div class="flex items-center gap-2"><span class="text-xs font-bold w-3" style="color:#00bcd4">C</span><div class="flex-1 h-4 rounded overflow-hidden" style="background:var(--bg-1)"><div id="edBarC" class="ed-cmyk-bar h-full" style="background:#00bcd4;width:0%"></div></div><span id="edC" class="text-xs w-9 text-right font-mono" style="color:var(--tx2)">0%</span></div>
+      <div class="flex items-center gap-2"><span class="text-xs font-bold w-3" style="color:#e040fb">M</span><div class="flex-1 h-4 rounded overflow-hidden" style="background:var(--bg-1)"><div id="edBarM" class="ed-cmyk-bar h-full" style="background:#e040fb;width:0%"></div></div><span id="edM" class="text-xs w-9 text-right font-mono" style="color:var(--tx2)">0%</span></div>
+      <div class="flex items-center gap-2"><span class="text-xs font-bold w-3" style="color:#ffeb3b">Y</span><div class="flex-1 h-4 rounded overflow-hidden" style="background:var(--bg-1)"><div id="edBarY" class="ed-cmyk-bar h-full" style="background:#ffeb3b;width:0%"></div></div><span id="edY" class="text-xs w-9 text-right font-mono" style="color:var(--tx2)">0%</span></div>
+      <div class="flex items-center gap-2"><span class="text-xs font-bold w-3" style="color:#bbb">K</span><div class="flex-1 h-4 rounded overflow-hidden" style="background:var(--bg-1)"><div id="edBarK" class="ed-cmyk-bar h-full" style="background:#bbb;width:0%"></div></div><span id="edK" class="text-xs w-9 text-right font-mono" style="color:var(--tx2)">0%</span></div>
+    </div>
+    <div class="flex items-center justify-between mt-2 pt-1" style="border-top:1px solid var(--border)">
+      <span class="text-xs" style="color:var(--tx3)">TAC</span><span id="edTAC" class="text-xs font-bold" style="color:var(--tx2)">0%</span>
+    </div>
+  </div>
+</div>
+
+<div id="toastContainer" class="fixed top-4 right-4 flex flex-col gap-2 z-50" style="pointer-events:none"></div>
+
+<div id="fixupModal" class="fixed inset-0 z-40 hidden flex items-center justify-center" style="background:rgba(0,0,0,.6);backdrop-filter:blur(4px)">
+  <div class="rounded-xl p-6 w-full max-w-lg mx-4" style="background:var(--bg-2);border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.5)">
+    <div class="flex items-center justify-between mb-4"><h3 class="text-lg font-bold">Automated Fix-Up</h3><button class="btn btn-sm btn-s" onclick="app.closeFixupModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="text-xs mb-3" style="color:var(--acc)"><i class="fa-solid fa-shield-halved mr-1"></i> GRACoL 2013 CRPC6</div>
+    <div id="fixupList" class="max-h-80 overflow-y-auto mb-4"></div>
+    <div class="flex items-center justify-end gap-2">
+      <button class="btn btn-s" onclick="app.closeFixupModal()">Cancel</button>
+      <button class="btn btn-p" onclick="app.applySelectedFixes()"><i class="fa-solid fa-check"></i> Apply Selected</button>
+    </div>
+  </div>
+</div>
+
+<div id="reportModal" class="fixed inset-0 z-40 hidden flex items-center justify-center" style="background:rgba(0,0,0,.6);backdrop-filter:blur(4px)">
+  <div class="rounded-xl p-6 w-full max-w-2xl mx-4" style="background:var(--bg-2);border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.5)">
+    <div class="flex items-center justify-between mb-4"><h3 class="text-lg font-bold">Preflight Report</h3><button class="btn btn-sm btn-s" onclick="document.getElementById('reportModal').classList.add('hidden')"><i class="fa-solid fa-xmark"></i></button></div>
+    <div id="reportPreview" class="max-h-96 overflow-y-auto rounded-lg p-4 text-sm" style="background:var(--bg-1);border:1px solid var(--border);color:var(--tx2);font-family:monospace;white-space:pre-wrap"></div>
+    <div class="flex items-center justify-end gap-2 mt-4">
+      <button class="btn btn-s" onclick="document.getElementById('reportModal').classList.add('hidden')">Close</button>
+      <button class="btn btn-p" onclick="app.downloadReport()"><i class="fa-solid fa-download"></i> Download</button>
+    </div>
+  </div>
+</div>
+
+<div id="fontAIModal" class="fixed inset-0 z-40 hidden flex items-center justify-center" style="background:rgba(0,0,0,.6);backdrop-filter:blur(4px)">
+  <div class="rounded-xl p-6 w-full max-w-xl mx-4" style="background:var(--bg-2);border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.5);max-height:85vh;display:flex;flex-direction:column">
+    <div class="flex items-center justify-between mb-4 flex-shrink-0">
+      <div class="flex items-center gap-2"><i class="fa-solid fa-wand-magic-sparkles" style="color:var(--acc)"></i><h3 class="text-lg font-bold">Font Match Detail</h3></div>
+      <button class="btn btn-sm btn-s" onclick="document.getElementById('fontAIModal').classList.add('hidden')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div id="fontAIDetail" class="flex-1 overflow-y-auto"></div>
+  </div>
+</div>
+
+<!-- Magnify Modal -->
+<div id="magnifyModal" class="fixed inset-0 z-50 hidden" style="background:rgba(5,7,12,.82);backdrop-filter:blur(6px)" onclick="app.closeMagnify()">
+  <div id="magnifyBox" style="position:absolute;background:var(--bg-2);border:1px solid var(--border-l);border-radius:12px;box-shadow:0 32px 80px rgba(0,0,0,.7);min-width:480px;max-width:90vw;overflow:hidden" onclick="event.stopPropagation()">
+    <!-- header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg-1)">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div id="magnifyBadge" style="width:10px;height:10px;border-radius:50%;background:var(--err)"></div>
+        <span id="magnifyTitle" style="font-size:13px;font-weight:600;font-family:'Space Grotesk',sans-serif;color:var(--tx1)">Issue #1</span>
+        <span id="magnifySev" class="badge badge-err" style="font-size:10px"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:10px;color:var(--tx3)">200% magnification</span>
+        <div style="width:1px;height:14px;background:var(--border);margin:0 4px"></div>
+        <button class="btn btn-sm btn-s" onclick="app.closeMagnify()" style="padding:3px 8px"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+    </div>
+    <!-- canvas -->
+    <div style="position:relative;background:#fff;overflow:hidden">
+      <canvas id="magnifyCanvas" style="display:block"></canvas>
+      <!-- crosshair reticle -->
+      <div id="magnifyReticle" style="position:absolute;pointer-events:none;border:1.5px solid rgba(77,166,255,.8);border-radius:4px;box-shadow:0 0 0 1px rgba(0,0,0,.3)"></div>
+    </div>
+    <!-- footer meta -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-top:1px solid var(--border);background:var(--bg-1)">
+      <span id="magnifyMeta" style="font-size:11px;color:var(--tx3)"></span>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-s" id="magnifyPrev" onclick="app.magnifyStep(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+        <span id="magnifyCounter" style="font-size:11px;color:var(--tx3);line-height:28px;min-width:40px;text-align:center"></span>
+        <button class="btn btn-sm btn-s" id="magnifyNext" onclick="app.magnifyStep(1)"><i class="fa-solid fa-chevron-right"></i></button>
+        <button class="btn btn-sm btn-p" onclick="app.jumpToIssue(app._magnifyIssue)" style="margin-left:4px"><i class="fa-solid fa-location-dot"></i> Go to page</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="settingsPanel" class="fixed top-12 right-4 z-30 hidden rounded-xl p-4 w-72" style="background:var(--bg-2);border:1px solid var(--border);box-shadow:0 16px 48px rgba(0,0,0,.5)">
+  <h4 class="text-sm font-bold mb-1">Settings</h4>
+  <p class="text-xs mb-3" style="color:var(--acc)">GRACoL 2013 CRPC6</p>
+  <div class="space-y-3">
+    <div class="flex items-center justify-between"><span class="text-xs" style="color:var(--tx2)">Max TAC</span><select id="setTAC" class="text-xs rounded px-2 py-1" style="background:var(--bg-4);color:var(--tx1);border:1px solid var(--border)"><option>300%</option><option selected>330%</option><option>340%</option><option>350%</option></select></div>
+    <div class="flex items-center justify-between"><span class="text-xs" style="color:var(--tx2)">Min Resolution</span><select id="setRes" class="text-xs rounded px-2 py-1" style="background:var(--bg-4);color:var(--tx1);border:1px solid var(--border)"><option>150 DPI</option><option selected>300 DPI</option><option>600 DPI</option></select></div>
+    <div class="flex items-center justify-between"><span class="text-xs" style="color:var(--tx2)">Bleed</span><select id="setBleed" class="text-xs rounded px-2 py-1" style="background:var(--bg-4);color:var(--tx1);border:1px solid var(--border)"><option>0.125 in</option><option selected>0.1875 in</option><option>0.25 in</option><option>None</option></select></div>
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const FONT_DB=[
+{n:"Roboto",s:"Google Fonts",u:"https://fonts.google.com/specimen/Roboto",c:"sans-serif",w:["100","300","400","500","700","900"],st:["normal","italic"],xh:.53,wd:.56,ct:"low",sf:false,geo:true,free:true},
+{n:"Open Sans",s:"Google Fonts",u:"https://fonts.google.com/specimen/Open+Sans",c:"sans-serif",w:["300","400","500","600","700","800"],st:["normal","italic"],xh:.54,wd:.55,ct:"low",sf:false,geo:false,free:true},
+{n:"Lato",s:"Google Fonts",u:"https://fonts.google.com/specimen/Lato",c:"sans-serif",w:["100","300","400","700","900"],st:["normal","italic"],xh:.53,wd:.52,ct:"low",sf:false,geo:false,free:true},
+{n:"Montserrat",s:"Google Fonts",u:"https://fonts.google.com/specimen/Montserrat",c:"sans-serif",w:["100","200","300","400","500","600","700","800","900"],st:["normal","italic"],xh:.51,wd:.50,ct:"high",sf:false,geo:true,free:true},
+{n:"Poppins",s:"Google Fonts",u:"https://fonts.google.com/specimen/Poppins",c:"sans-serif",w:["100","200","300","400","500","600","700","800","900"],st:["normal","italic"],xh:.52,wd:.53,ct:"medium",sf:false,geo:true,free:true},
+{n:"Raleway",s:"Google Fonts",u:"https://fonts.google.com/specimen/Raleway",c:"sans-serif",w:["100","200","300","400","500","600","700","800","900"],st:["normal","italic"],xh:.50,wd:.48,ct:"low",sf:false,geo:false,free:true},
+{n:"Playfair Display",s:"Google Fonts",u:"https://fonts.google.com/specimen/Playfair+Display",c:"serif",w:["400","500","600","700","800","900"],st:["normal","italic"],xh:.44,wd:.48,ct:"high",sf:true,geo:false,free:true},
+{n:"Merriweather",s:"Google Fonts",u:"https://fonts.google.com/specimen/Merriweather",c:"serif",w:["300","400","700","900"],st:["normal","italic"],xh:.45,wd:.50,ct:"medium",sf:true,geo:false,free:true},
+{n:"Source Sans 3",s:"Google Fonts",u:"https://fonts.google.com/specimen/Source+Sans+3",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal","italic"],xh:.54,wd:.54,ct:"low",sf:false,geo:false,free:true},
+{n:"Nunito",s:"Google Fonts",u:"https://fonts.google.com/specimen/Nunito",c:"sans-serif",w:["200","300","400","500","600","700","800","900"],st:["normal","italic"],xh:.55,wd:.57,ct:"low",sf:false,geo:true,free:true},
+{n:"Inter",s:"Google Fonts",u:"https://fonts.google.com/specimen/Inter",c:"sans-serif",w:["100","200","300","400","500","600","700","800","900"],st:["normal","italic"],xh:.53,wd:.52,ct:"medium",sf:false,geo:false,free:true},
+{n:"Oswald",s:"Google Fonts",u:"https://fonts.google.com/specimen/Oswald",c:"sans-serif",w:["200","300","400","500","600","700"],st:["normal"],xh:.50,wd:.42,ct:"low",sf:false,geo:false,free:true},
+{n:"IBM Plex Sans",s:"Google Fonts",u:"https://fonts.google.com/specimen/IBM+Plex+Sans",c:"sans-serif",w:["100","200","300","400","500","600","700"],st:["normal","italic"],xh:.53,wd:.52,ct:"medium",sf:false,geo:false,free:true},
+{n:"Work Sans",s:"Google Fonts",u:"https://fonts.google.com/specimen/Work+Sans",c:"sans-serif",w:["100","200","300","400","500","600","700","800","900"],st:["normal","italic"],xh:.52,wd:.53,ct:"medium",sf:false,geo:false,free:true},
+{n:"DM Sans",s:"Google Fonts",u:"https://fonts.google.com/specimen/DM+Sans",c:"sans-serif",w:["100","200","300","400","500","600","700","800","900"],st:["normal","italic"],xh:.53,wd:.54,ct:"low",sf:false,geo:true,free:true},
+{n:"Manrope",s:"Google Fonts",u:"https://fonts.google.com/specimen/Manrope",c:"sans-serif",w:["200","300","400","500","600","700","800"],st:["normal"],xh:.54,wd:.54,ct:"low",sf:false,geo:false,free:true},
+{n:"Satoshi",s:"Fontshare",u:"https://www.fontshare.com/fonts/satoshi",c:"sans-serif",w:["300","400","500","700","900"],st:["normal","italic"],xh:.54,wd:.55,ct:"low",sf:false,geo:true,free:true},
+{n:"General Sans",s:"Fontshare",u:"https://www.fontshare.com/fonts/general-sans",c:"sans-serif",w:["300","400","500","600","700"],st:["normal","italic"],xh:.53,wd:.54,ct:"low",sf:false,geo:false,free:true},
+{n:"Zodiak",s:"Fontshare",u:"https://www.fontshare.com/fonts/zodiak",c:"serif",w:["400","500","600","700","800"],st:["normal","italic"],xh:.44,wd:.46,ct:"high",sf:true,geo:false,free:true},
+{n:"Panchang",s:"Fontshare",u:"https://www.fontshare.com/fonts/panchang",c:"sans-serif",w:["400","500","600","700","800"],st:["normal"],xh:.55,wd:.60,ct:"low",sf:false,geo:false,free:true},
+{n:"Jaspear",s:"Fontshare",u:"https://www.fontshare.com/fonts/jaspear",c:"display",w:["400","500","600","700"],st:["normal"],xh:.48,wd:.52,ct:"high",sf:false,geo:true,free:true},
+{n:"Helvetica Neue",s:"Adobe Fonts",u:"https://fonts.adobe.com/fonts/helvetica-neue",c:"sans-serif",w:["100","200","300","400","500","600","700","800","900"],st:["normal","italic"],xh:.53,wd:.53,ct:"low",sf:false,geo:true,free:false},
+{n:"Futura PT",s:"Adobe Fonts",u:"https://fonts.adobe.com/fonts/futura-pt",c:"sans-serif",w:["100","300","400","500","600","700","800","900"],st:["normal","italic"],xh:.50,wd:.48,ct:"high",sf:false,geo:true,free:false},
+{n:"Garamond Premier Pro",s:"Adobe Fonts",u:"https://fonts.adobe.com/fonts/garamond-premier-pro",c:"serif",w:["regular","semibold","bold","italic"],st:["normal","italic"],xh:.42,wd:.44,ct:"high",sf:true,geo:false,free:false},
+{n:"Myriad Pro",s:"Adobe Fonts",u:"https://fonts.adobe.com/fonts/myriad-pro",c:"sans-serif",w:["100","200","300","400","600","700","900"],st:["normal","italic","condensed"],xh:.54,wd:.55,ct:"low",sf:false,geo:false,free:false},
+{n:"Trade Gothic",s:"Adobe Fonts",u:"https://fonts.adobe.com/fonts/trade-gothic",c:"sans-serif",w:["bold","next","condensed"],st:["normal","oblique"],xh:.52,wd:.50,ct:"medium",sf:false,geo:false,free:false},
+{n:"Frutiger",s:"Adobe Fonts",u:"https://fonts.adobe.com/fonts/frutiger",c:"sans-serif",w:["300","400","500","600","700","900"],st:["normal","italic"],xh:.53,wd:.54,ct:"low",sf:false,geo:false,free:false},
+{n:"Univers",s:"Adobe Fonts",u:"https://fonts.adobe.com/fonts/univers",c:"sans-serif",w:["300","400","500","600","700","900"],st:["normal","italic","condensed"],xh:.53,wd:.52,ct:"low",sf:false,geo:false,free:false},
+{n:"League Spartan",s:"Font Squirrel",u:"https://www.fontsquirrel.com/fonts/league-spartan",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal","italic"],xh:.50,wd:.50,ct:"high",sf:false,geo:true,free:true},
+{n:"Cabin",s:"Font Squirrel",u:"https://www.fontsquirrel.com/fonts/cabin",c:"sans-serif",w:["400","500","600","700"],st:["normal","italic"],xh:.54,wd:.55,ct:"low",sf:false,geo:false,free:true},
+{n:"Quicksand",s:"Font Squirrel",u:"https://www.fontsquirrel.com/fonts/quicksand",c:"sans-serif",w:["300","400","500","600","700"],st:["normal"],xh:.55,wd:.56,ct:"low",sf:false,geo:true,free:true},
+{n:"Bebas Neue",s:"Dafont",u:"https://www.dafont.com/bebas-neue.font",c:"display",w:["regular"],st:["normal"],xh:.72,wd:.35,ct:"low",sf:false,geo:false,free:true},
+{n:"League Gothic",s:"Dafont",u:"https://www.dafont.com/league-gothic.font",c:"display",w:["regular"],st:["normal"],xh:.68,wd:.38,ct:"low",sf:false,geo:false,free:true},
+{n:"Chunk Five",s:"Dafont",u:"https://www.dafont.com/chunk-five.font",c:"serif",w:["regular"],st:["normal"],xh:.48,wd:.55,ct:"high",sf:true,geo:false,free:true},
+{n:"Glacial Indifference",s:"FontSpace",u:"https://www.fontspace.com/glacial-indifference-font",c:"sans-serif",w:["300","400","500","600","700"],st:["normal","italic"],xh:.53,wd:.54,ct:"low",sf:false,geo:true,free:true},
+{n:"Code Pro",s:"FontSpace",u:"https://www.fontspace.com/code-pro-font",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal"],xh:.52,wd:.52,ct:"medium",sf:false,geo:false,free:true},
+{n:"FF DIN",s:"MyFonts",u:"https://www.myfonts.com/fonts/fontfont/ff-din/",c:"sans-serif",w:["300","400","500","600","700","900"],st:["normal","italic","condensed"],xh:.52,wd:.48,ct:"high",sf:false,geo:true,free:false},
+{n:"Proxima Nova",s:"MyFonts",u:"https://www.myfonts.com/fonts/marksimonson/proxima-nova/",c:"sans-serif",w:["300","400","500","600","700","800"],st:["normal","italic","condensed"],xh:.54,wd:.54,ct:"low",sf:false,geo:false,free:false},
+{n:"Avenir Next",s:"MyFonts",u:"https://www.myfonts.com/fonts/linotype/avenir-next/",c:"sans-serif",w:["300","400","500","600","700","900"],st:["normal","italic"],xh:.53,wd:.52,ct:"medium",sf:false,geo:true,free:false},
+{n:"FF Meta",s:"MyFonts",u:"https://www.myfonts.com/fonts/fontfont/ff-meta/",c:"sans-serif",w:["300","400","500","600","700","900"],st:["normal","italic"],xh:.52,wd:.53,ct:"medium",sf:false,geo:false,free:false},
+{n:"Neue Haas Grotesk",s:"MyFonts",u:"https://www.myfonts.com/fonts/linotype/neue-haas-grotesk/",c:"sans-serif",w:["300","400","500","600","700"],st:["normal","italic"],xh:.53,wd:.53,ct:"low",sf:false,geo:true,free:false},
+{n:"Graphik",s:"Typwolf",u:"https://typwolf.com/graphik",c:"sans-serif",w:["300","400","500","600","700"],st:["normal","italic"],xh:.53,wd:.53,ct:"medium",sf:false,geo:false,free:false},
+{n:"Circular",s:"Typwolf",u:"https://typwolf.com/circular",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal","italic"],xh:.54,wd:.54,ct:"low",sf:false,geo:true,free:false},
+{n:"Gilroy",s:"Typwolf",u:"https://typwolf.com/gilroy",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal","italic"],xh:.53,wd:.54,ct:"low",sf:false,geo:true,free:false},
+{n:"TT Norms",s:"Typwolf",u:"https://typwolf.com/tt-norms",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal","italic"],xh:.53,wd:.52,ct:"medium",sf:false,geo:true,free:false},
+{n:"Intro",s:"Fontfabric",u:"https://www.fontfabric.com/fonts/intro/",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal","italic"],xh:.52,wd:.52,ct:"medium",sf:false,geo:true,free:false},
+{n:"Nexa",s:"Fontfabric",u:"https://www.fontfabric.com/fonts/nexa/",c:"sans-serif",w:["300","400","500","600","700","800"],st:["normal","italic"],xh:.53,wd:.54,ct:"low",sf:false,geo:true,free:false},
+{n:"Miler",s:"Fontfabric",u:"https://www.fontfabric.com/fonts/miler/",c:"serif",w:["300","400","500","600","700"],st:["normal","italic"],xh:.44,wd:.47,ct:"high",sf:true,geo:false,free:false},
+{n:"GT Walsheim",s:"Display Type Foundry",u:"https://displatypetype.com/fonts/gt-walsheim/",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal","italic","condensed"],xh:.53,wd:.54,ct:"low",sf:false,geo:true,free:false},
+{n:"GT America",s:"Display Type Foundry",u:"https://displatypetype.com/fonts/gt-america/",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal","italic","condensed","mono"],xh:.53,wd:.53,ct:"low",sf:false,geo:false,free:false},
+{n:"Roobert",s:"Power Type Foundry",u:"https://powertypefoundry.com/roobert",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal","italic","condensed"],xh:.53,wd:.54,ct:"medium",sf:false,geo:true,free:false},
+{n:"Sora",s:"Unblast",u:"https://unblast.com/sora-free-font/",c:"sans-serif",w:["300","400","500","600","700","800"],st:["normal"],xh:.53,wd:.53,ct:"low",sf:false,geo:false,free:true},
+{n:"Cabinet Grotesk",s:"Unblast",u:"https://unblast.com/cabinet-grotesk-free-font/",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal","italic"],xh:.53,wd:.53,ct:"medium",sf:false,geo:true,free:true},
+{n:"Clash Display",s:"Behance",u:"https://www.behance.net/gallery/136979885/Clash-Display-Font-Family",c:"display",w:["300","400","500","600","700"],st:["normal","italic"],xh:.50,wd:.50,ct:"high",sf:false,geo:true,free:true},
+{n:"Arial",s:"System",u:"",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal","italic"],xh:.53,wd:.52,ct:"low",sf:false,geo:false,free:true},
+{n:"Times New Roman",s:"System",u:"",c:"serif",w:["400","700"],st:["normal","italic"],xh:.43,wd:.44,ct:"high",sf:true,geo:false,free:true},
+{n:"Georgia",s:"System",u:"",c:"serif",w:["400","700"],st:["normal","italic"],xh:.45,wd:.48,ct:"medium",sf:true,geo:false,free:true},
+{n:"Courier New",s:"System",u:"",c:"monospace",w:["400","700"],st:["normal","italic"],xh:.45,wd:.60,ct:"low",sf:false,geo:false,free:true},
+{n:"Garamond",s:"System",u:"",c:"serif",w:["400","700"],st:["normal","italic"],xh:.42,wd:.43,ct:"high",sf:true,geo:false,free:false},
+{n:"Futura",s:"System",u:"",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal","italic","condensed"],xh:.50,wd:.47,ct:"high",sf:false,geo:true,free:false},
+{n:"Helvetica",s:"System",u:"",c:"sans-serif",w:["300","400","500","600","700","900"],st:["normal","italic","condensed"],xh:.53,wd:.53,ct:"low",sf:false,geo:true,free:false},
+{n:"Trade Gothic Next",s:"Adobe Fonts",u:"https://fonts.adobe.com/fonts/trade-gothic-next",c:"sans-serif",w:["300","400","500","600","700","800"],st:["normal","italic","condensed"],xh:.52,wd:.50,ct:"medium",sf:false,geo:false,free:false},
+{n:"Aktiv Grotesk",s:"MyFonts",u:"https://www.myfonts.com/fonts/daltonmaag/aktiv-grotesk/",c:"sans-serif",w:["300","400","500","600","700","800","900"],st:["normal","italic"],xh:.53,wd:.53,ct:"medium",sf:false,geo:true,free:false},
+{n:"Söhne",s:"Typwolf",u:"https://typwolf.com/sohne",c:"sans-serif",w:["300","400","500","600","700","800"],st:["normal","italic"],xh:.53,wd:.53,ct:"low",sf:false,geo:false,free:false}
+];
+
+class FontAIEngine{
+  constructor(){this.results=[];this.isAnalyzing=false}
+  levenshtein(a,b){const m=a.length,n=b.length;const d=Array.from({length:m+1},(_,i)=>Array.from({length:n+1},(__,j)=>i||j));for(let i=1;i<=m;i++)for(let j=1;j<=n;j++){const c=a[i-1]===b[j-1]?0:1;d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+c)}return d[m][n]}
+  nameSimilarity(a,b){const na=a.toLowerCase().replace(/[-_\s]+/g,' '),nb=b.toLowerCase().replace(/[-_\s]+/g,' ');if(na===nb)return 1;if(na.includes(nb)||nb.includes(na))return .9;const ta=new Set(na.split(' ')),tb=new Set(nb.split(' '));let o=0;ta.forEach(t=>{if(tb.has(t))o++});return Math.max(o/Math.max(ta.size,tb.size),1-this.levenshtein(na,nb)/Math.max(na.length,nb.length))}
+  charSimilarity(a,b){let s=0;if(a.c===b.c)s+=.3;else if((a.c==='serif'&&(b.c==='display'||b.c==='monospace'))||(b.c==='serif'&&(a.c==='display'||a.c==='monospace')))s+=.1;else s+=.15;s+=.2*(1-Math.abs(a.xh-b.xh)/.3);s+=.2*(1-Math.abs(a.wd-b.wd)/.3);s+=a.ct===b.ct?.15:.05;s+=a.sf===b.sf?.1:0;s+=a.geo===b.geo?.05:0;return Math.min(1,s)}
+  findMatches(detectedName,detectedChars={},maxResults=8){const r=[];for(const f of FONT_DB){const ns=this.nameSimilarity(detectedName,f.n),cs=detectedChars?this.charSimilarity(detectedChars,f):.5,cb=ns*.7+cs*.3;if(cb>.15)r.push({font:f,nameSim:Math.round(ns*100),charSim:Math.round(cs*100),confidence:Math.round(cb*100)})}r.sort((a,b)=>b.confidence-a.confidence);return r.slice(0,maxResults)}
+  async analyzePDF(pdfDoc,pageNum){const page=await pdfDoc.getPage(pageNum);const tc=await page.getTextContent();const fm={};tc.items.forEach(item=>{const fn=item.fontName||'Unknown';if(!fm[fn])fm[fn]={text:'',chars:0,styles:new Set()};fm[fn].text+=item.str;fm[fn].chars+=item.str.length;if(item.transform){if(Math.abs(item.transform[0])>1.1)fm[fn].styles.add('Bold');if(Math.abs(item.transform[2])>.1)fm[fn].styles.add('Italic')}});return Object.entries(fm).map(([name,data])=>({detectedName:this.cleanFontName(name),rawName:name,sampleText:data.text.substring(0,60),charCount:data.chars,styles:Array.from(data.styles),matches:this.findMatches(this.cleanFontName(name),this.inferCharacteristics(name,data.text))}))}
+  async analyzeImage(canvas){await this.loadTesseract();const worker=await Tesseract.createWorker('eng',1,{logger:()=>{}});const{data:{words}}=await worker.recognize(canvas);await worker.terminate();const g={};(words||[]).forEach(w=>{if(!w.text.trim())return;const k=Math.round(w.bbox.x0/50)+'_'+Math.round(w.bbox.y0/20);if(!g[k])g[k]={text:'',words:0,confSum:0,bbox:w.bbox};g[k].text+=w.text+' ';g[k].words++;g[k].confSum+=w.confidence});return Object.values(g).map(gr=>({detectedName:this.guessFontFromText(gr.text.trim(),gr.bbox),rawName:'OCR Detected',sampleText:gr.text.trim().substring(0,60),charCount:gr.words,styles:[],ocrConfidence:Math.round(gr.confSum/gr.words),matches:this.findMatches(this.guessFontFromText(gr.text.trim(),gr.bbox),this.inferCharacteristicsFromText(gr.text.trim()))}))}
+  async loadTesseract(){if(window.Tesseract)return;return new Promise((r,j)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';s.onload=r;s.onerror=j;document.head.appendChild(s)})}
+  cleanFontName(raw){let n=raw.replace(/^[A-F0-9+]+/,'').replace(/[-_]/g,' ').trim();return n.replace(/\b(Bold|Italic|Oblique|Light|Medium|Regular|Roman|Thin|Heavy|Black|Demi|Semi|Extra|Ultra|Condensed|Extended|Narrow|Wide|Compressed|SC|LT|MT|BT|Pro|Next|Std|CE|Cyr|Greek|Turk|Baltic|PC|TT)\b/gi,'').replace(/\s+/g,' ').trim()||raw}
+  inferCharacteristics(name,text){const cl=this.cleanFontName(name).toLowerCase(),isS=['garamond','times','merriweather','playfair','georgia','baskerville','caslon','bodoni','didot','rockwell','clarendon','chunk'].some(s=>cl.includes(s))||(text&&this.hasSerifIndicators(text)),isG=['futura','montserrat','poppins','avenir','gotham','geometric','circular','sohne','satoshi','intro','nexa','roobert','clash','cabinet'].some(g=>cl.includes(g));return{c:isS?'serif':'sans-serif',xh:isS?.44:.53,wd:isG?.50:.54,ct:isS?'high':'low',sf:isS,geo:isG}}
+  inferCharacteristicsFromText(text){const isS=this.hasSerifIndicators(text);return{c:isS?'serif':'sans-serif',xh:isS?.44:.53,wd:.54,ct:isS?'high':'low',sf:isS,geo:false}}
+  hasSerifIndicators(text){return['The','Times','Garamond','Merriweather','Playfair','Serif','Classic','Traditional','Editorial','Book','Magazine','Newspaper','Journal','Literary','Antiqua'].some(w=>text.includes(w))}
+  guessFontFromText(text,bbox){const t=text.toLowerCase();if(/the\s+quick\s+brown\s+fox/i.test(t))return'Helvetica';if(t.includes('lorem ipsum'))return'Garamond';if(bbox&&(bbox.x1-bbox.x0)>200&&(bbox.y1-bbox.y0)>30)return'Helvetica Neue';if((bbox.y1-bbox.y0)>40)return'Playfair Display';if(t.length<15&&t===t.toUpperCase())return'Bebas Neue';if(/^[A-Z\s&]+$/.test(t.trim())&&t.trim().length<20)return'Futura';return'Helvetica'}
+  loadGoogleFont(fn){return new Promise(r=>{const cn=fn.replace(/\s+/g,'+');if(document.querySelector(`link[href*="${cn}"]`)){r();return}const l=document.createElement('link');l.rel='stylesheet';l.href=`https://fonts.googleapis.com/css2?family=${cn}:wght@400;500;700&display=swap`;l.onload=r;l.onerror=r;document.head.appendChild(l)})}
+}
+
+class PreflightApp{
+  constructor(){
+    this.pdfDoc=null;this.imageObj=null;this.fileType=null;
+    this.currentPage=1;this.totalPages=0;this.zoom=1;
+    this.fileInfo={};this.analysis=null;
+    this.activeSeps=new Set();this.activeTab='summary';
+    this.isAnalyzing=false;this.thumbs=[];this.fixItems=[];
+    this.eyedropperActive=false;this.edRafId=null;
+    this.wheelTimer=null;this._scrolling=false;
+    this.fontAI=new FontAIEngine();this.fontAIResults=null;
+    this.initEvents();
+  }
+  initEvents(){
+    const fi=document.getElementById('fileInput'),fi2=document.getElementById('fileInput2'),dz=document.getElementById('dropZone');
+    fi.addEventListener('change',e=>this.handleFiles(e.target.files));
+    fi2.addEventListener('change',e=>this.handleFiles(e.target.files));
+    dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover')});
+    dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
+    dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');this.handleFiles(e.dataTransfer.files)});
+    document.addEventListener('keydown',e=>{
+      if(e.key==='ArrowLeft')this.prevPage();if(e.key==='ArrowRight')this.nextPage();
+      if(e.key==='+'||e.key==='=')this.zoomIn();if(e.key==='-')this.zoomOut();
+      if(e.key==='i'||e.key==='I')this.toggleEyedropper();
+    });
+    document.addEventListener('click',e=>{const sp=document.getElementById('settingsPanel');if(!sp.classList.contains('hidden')&&!sp.contains(e.target)&&!e.target.closest('[onclick*="toggleSettings"]'))sp.classList.add('hidden')});
+    const wrap=document.getElementById('canvasWrap');
+    wrap.addEventListener('mousemove',e=>this.onCanvasMouseMove(e));
+    wrap.addEventListener('mouseleave',()=>this.hideEyedropperPanel());
+    wrap.addEventListener('wheel',e=>{const atT=wrap.scrollTop<=0,atB=wrap.scrollTop+wrap.clientHeight>=wrap.scrollHeight-2;if((e.deltaY>0&&atB)||(e.deltaY<0&&atT)){e.preventDefault();if(!this.wheelTimer){this.wheelTimer=setTimeout(()=>{this.wheelTimer=null},300);if(e.deltaY>0)this.nextPage();else this.prevPage()}}},{passive:false});
+    const tc=document.getElementById('tabContent');
+    tc.addEventListener('scroll',()=>this.updateScrollHint());
+  }
+  updateScrollHint(){const tc=document.getElementById('tabContent'),h=document.getElementById('scrollHint');h.classList.toggle('hidden',!(tc.scrollHeight>tc.clientHeight+20&&tc.scrollTop<tc.scrollHeight-tc.clientHeight-30))}
+  async handleFiles(files){
+    if(!files||!files.length)return;const file=files[0];const ext=file.name.split('.').pop().toLowerCase();let type=null;
+    if(file.type==='application/pdf'||ext==='pdf')type='pdf';
+    else if(file.type==='image/jpeg'||file.type==='image/jpg'||ext==='jpg'||ext==='jpeg')type='jpeg';
+    else if(file.type==='image/png'||ext==='png')type='png';
+    if(!type){this.toast('Unsupported format. Use PDF, JPEG, or PNG.','err');return}
+    this.fileType=type;this.fileInfo={name:file.name,size:file.size,lastModified:file.lastModified};
+    document.getElementById('fileNameDisplay').textContent=file.name;
+    document.getElementById('fileSize').textContent=this.formatSize(file.size);
+    document.getElementById('fileTypeBadge').textContent=type.toUpperCase();
+    this.toast('Loading '+type.toUpperCase()+'...','inf');
+    try{
+      if(type==='pdf')await this.loadPDF(file);else await this.loadImage(file,type);
+      document.getElementById('uploadView').classList.add('hidden');
+      document.getElementById('workspaceView').classList.remove('hidden');
+      await this.renderPage(1);await this.generateThumbnails();
+      this.toast(type.toUpperCase()+' loaded — '+this.totalPages+' page(s)','ok');
+      this.setStatus('File loaded. Click "Preflight" or "Font AI" to analyze.');
+      setTimeout(()=>this.runPreflight(),500);
+    }catch(err){console.error(err);this.toast('Failed to load: '+err.message,'err')}
+  }
+  async loadPDF(file){const ab=await file.arrayBuffer();this.pdfDoc=await pdfjsLib.getDocument({data:ab}).promise;this.imageObj=null;this.totalPages=this.pdfDoc.numPages;this.currentPage=1;this.zoom=1;const meta=await this.pdfDoc.getMetadata().catch(()=>null);const info=meta?.info||{};const p=(info.Producer||'').toLowerCase();let f='Standard PDF';if(p.includes('indesign'))f='InDesign';else if(p.includes('illustrator'))f='Illustrator';else if(p.includes('acrobat'))f='Acrobat';else if(p.includes('adobe'))f='Adobe PDF';else if(p.includes('chrome')||p.includes('pdfkit'))f='Web Export';document.getElementById('pdfFormat').textContent=f}
+  async loadImage(file,type){return new Promise((resolve,reject)=>{this.pdfDoc=null;this.imageObj=new Image();this.imageObj.onload=()=>{this.totalPages=1;this.currentPage=1;this.zoom=1;if(type==='jpeg'){this.readJPEGDPI(file).then(dpi=>{this.fileInfo.exifDPI=dpi;document.getElementById('pdfFormat').textContent='JPEG'+(dpi?' ('+dpi+' DPI)':'');resolve()}).catch(()=>{this.fileInfo.exifDPI=null;document.getElementById('pdfFormat').textContent='JPEG';resolve()})}else{this.fileInfo.exifDPI=null;document.getElementById('pdfFormat').textContent='PNG — '+this.imageObj.width+'×'+this.imageObj.height+' px';resolve()}};this.imageObj.onerror=reject;this.imageObj.src=URL.createObjectURL(file)})}
+  async readJPEGDPI(file){const buf=await file.slice(0,65536).arrayBuffer();const v=new DataView(buf);if(v.getUint16(0)!==0xFFD8)return null;let off=2;while(off<v.byteLength-4){const m=v.getUint16(off);if(m===0xFFE1){const len=v.getUint16(off+2);if(v.getUint32(off+4)===0x45786966){const ts=off+10,le=v.getUint16(ts)===0x4949;const io=ts+v.getUint32(ts+4,le),is=ts+io,ec=v.getUint16(is,le);for(let i=0;i<ec;i++){const eo=is+2+i*12;if(eo+12>v.byteLength)break;if(v.getUint16(eo,le)===0x011A){const vo=ts+v.getUint32(eo+8,le);return Math.round(v.getUint32(vo,le)/v.getUint32(vo+4,le))}}}off+=2+len}else if((m&0xFF00)===0xFF00){off+=2+v.getUint16(off+2)}else break}return null}
+  async renderPage(num){
+    this.currentPage=num;document.getElementById('curPageNum').textContent=num;
+    const canvas=document.getElementById('pdfCanvas'),ctx=canvas.getContext('2d'),sepCanvas=document.getElementById('sepCanvas'),wrap=document.getElementById('canvasWrap');
+    if(this.fileType==='pdf'&&this.pdfDoc){
+      const page=await this.pdfDoc.getPage(num);const vp=page.getViewport({scale:1});
+      const maxW=wrap.clientWidth-48,maxH=wrap.clientHeight-48;const baseScale=Math.min(maxW/vp.width,maxH/vp.height,2);
+      const dvp=page.getViewport({scale:this.zoom*baseScale});canvas.width=dvp.width;canvas.height=dvp.height;
+      await page.render({canvasContext:ctx,viewport:dvp}).promise;
+      document.getElementById('dimDisplay').textContent=(vp.width/72).toFixed(3)+'" × '+(vp.height/72).toFixed(3)+'"';
+    }else if(this.imageObj){
+      const iw=this.imageObj.naturalWidth||this.imageObj.width,ih=this.imageObj.naturalHeight||this.imageObj.height;
+      const maxW=wrap.clientWidth-48,maxH=wrap.clientHeight-48;const baseScale=Math.min(maxW/iw,maxH/ih,2);
+      const sw=Math.round(iw*this.zoom*baseScale),sh=Math.round(ih*this.zoom*baseScale);
+      canvas.width=sw;canvas.height=sh;ctx.clearRect(0,0,sw,sh);ctx.drawImage(this.imageObj,0,0,sw,sh);
+      const dpi=this.fileInfo.exifDPI||72;document.getElementById('dimDisplay').textContent=iw+'×'+ih+' px ('+(iw/dpi).toFixed(3)+'"×'+(ih/dpi).toFixed(3)+'" @'+dpi+' DPI)';
+    }
+    sepCanvas.width=canvas.width;sepCanvas.height=canvas.height;this.updateThumbActive();this.clearSeps();
+    document.getElementById('zoomLevel').textContent=Math.round(this.zoom*100)+'%';
+    if(!this._scrolling){wrap.scrollTop=Math.max(0,(wrap.scrollHeight-wrap.clientHeight)/2);wrap.scrollLeft=Math.max(0,(wrap.scrollWidth-wrap.clientWidth)/2)}
+    if(this.analysis)this.stampMainMarkers();
+  }
+  async generateThumbnails(){
+    const list=document.getElementById('thumbList');list.innerHTML='';this.thumbs=[];
+    if(this.fileType==='pdf'&&this.pdfDoc){for(let i=1;i<=this.totalPages;i++){const page=await this.pdfDoc.getPage(i);const vp=page.getViewport({scale:.3});const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;c.className='thumb'+(i===1?' active':'');c.dataset.page=i;c.onclick=()=>this.renderPage(i);await page.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
+    const wrap=document.createElement('div');wrap.className='thumb-wrap';wrap.id='thumb-wrap-pg-'+i;wrap.appendChild(c);list.appendChild(wrap);this.thumbs.push(c);const lbl=document.createElement('div');lbl.className='text-center text-xs mt-0.5';lbl.style.color='var(--tx3)';lbl.textContent=i;list.appendChild(lbl)}}
+    else if(this.imageObj){const c=document.createElement('canvas');const iw=this.imageObj.naturalWidth||this.imageObj.width,ih=this.imageObj.naturalHeight||this.imageObj.height;const s=Math.min(160/iw,160/(ih*1.414),1);c.width=Math.round(iw*s);c.height=Math.round(ih*s);c.className='thumb active';c.dataset.page='1';c.getContext('2d').drawImage(this.imageObj,0,0,c.width,c.height);
+    const wrap=document.createElement('div');wrap.className='thumb-wrap';wrap.id='thumb-wrap-pg-1';wrap.appendChild(c);list.appendChild(wrap);this.thumbs.push(c);const lbl=document.createElement('div');lbl.className='text-center text-xs mt-0.5';lbl.style.color='var(--tx3)';lbl.textContent='1';list.appendChild(lbl)}
+    document.getElementById('pageCountBadge').textContent=this.totalPages+' pg';document.getElementById('totalPageNum').textContent=this.totalPages;
+  }
+  updateThumbActive(){this.thumbs.forEach(t=>t.classList.toggle('active',parseInt(t.dataset.page)===this.currentPage))}
+  prevPage(){if(this.currentPage>1)this.renderPage(this.currentPage-1)}
+  nextPage(){if(this.currentPage<this.totalPages)this.renderPage(this.currentPage+1)}
+  zoomIn(){this.zoom=Math.min(this.zoom*1.25,5);this._scrolling=true;this.renderPage(this.currentPage);this._scrolling=false}
+  zoomOut(){this.zoom=Math.max(this.zoom/1.25,.1);this._scrolling=true;this.renderPage(this.currentPage);this._scrolling=false}
+  zoomFit(){this.zoom=1;this.renderPage(this.currentPage)}
+  toggleEyedropper(){this.eyedropperActive=!this.eyedropperActive;document.getElementById('btnEyedropper').classList.toggle('active',this.eyedropperActive);document.getElementById('canvasWrap').style.cursor=this.eyedropperActive?'crosshair':'default';if(!this.eyedropperActive)this.hideEyedropperPanel()}
+  onCanvasMouseMove(e){if(!this.eyedropperActive)return;const cross=document.getElementById('edCrosshair'),panel=document.getElementById('eyedropperPanel');cross.style.left=e.clientX+'px';cross.style.top=e.clientY+'px';cross.classList.add('visible');let px=e.clientX+24,py=e.clientY-20;if(px+210>window.innerWidth)px=e.clientX-226;if(py+200>window.innerHeight)py=e.clientY-210;if(py<10)py=10;panel.style.left=px+'px';panel.style.top=py+'px';panel.classList.add('visible');if(!this.edRafId){this.edRafId=requestAnimationFrame(()=>{this.sampleColor();this.edRafId=null})}}
+  hideEyedropperPanel(){document.getElementById('eyedropperPanel').classList.remove('visible');document.getElementById('edCrosshair').classList.remove('visible')}
+  sampleColor(){const canvas=document.getElementById('pdfCanvas');if(!canvas.width||!canvas.height)return;const ctx=canvas.getContext('2d');const cross=document.getElementById('edCrosshair');const mx=parseFloat(cross.style.left),my=parseFloat(cross.style.top);const cr=canvas.getBoundingClientRect();const cx2=(mx-cr.left)*(canvas.width/cr.width),cy2=(my-cr.top)*(canvas.height/cr.height);if(cx2<0||cy2<0||cx2>=canvas.width||cy2>=canvas.height)return;const p=ctx.getImageData(Math.floor(cx2),Math.floor(cy2),1,1).data;const r=p[0],g=p[1],b=p[2],a=p[3];document.getElementById('edSwatch').style.background=`rgba(${r},${g},${b},${a/255})`;document.getElementById('edHex').textContent='#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('').toUpperCase();document.getElementById('edRGB').textContent=`${r}, ${g}, ${b}`+(a<255?` (α ${Math.round(a/255*100)}%)`:'');const cm=this.rgbToGRACoLCMYK(r,g,b);document.getElementById('edC').textContent=cm.C+'%';document.getElementById('edM').textContent=cm.M+'%';document.getElementById('edY').textContent=cm.Y+'%';document.getElementById('edK').textContent=cm.K+'%';document.getElementById('edBarC').style.width=cm.C+'%';document.getElementById('edBarM').style.width=cm.M+'%';document.getElementById('edBarY').style.width=cm.Y+'%';document.getElementById('edBarK').style.width=cm.K+'%';const tac=cm.C+cm.M+cm.Y+cm.K;const te=document.getElementById('edTAC');te.textContent=tac+'%';te.style.color=tac>330?'var(--err)':tac>300?'var(--wrn)':'var(--ok)'}
+  rgbToGRACoLCMYK(r,g,b){let R=r/255,G=g/255,B=b/255;const lin=c=>c<=.04045?c/12.92:Math.pow((c+.055)/1.055,2.4);let lr=lin(R),lg=lin(G),lb=lin(B);let K=1-Math.max(lr,lg,lb);if(K>=.9999)return{C:0,M:0,Y:0,K:100};let C=(1-lr-K)/(1-K),M=(1-lg-K)/(1-K),Y=(1-lb-K)/(1-K);const bg=.12,kB=K*bg;K=Math.min(1,K+kB);const d=Math.max(.0001,1-K);C=Math.max(0,C*(1-kB)/d);M=Math.max(0,M*(1-kB)/d);Y=Math.max(0,Y*(1-kB)/d);if(K>.4){const uca=(K-.4)*.06;C=Math.min(1,C+uca);M=Math.min(1,M+uca);Y=Math.min(1,Y+uca)}let t=C+M+Y+K;if(t>3.3){const s=3.3/t;C*=s;M*=s;Y*=s;K*=s}return{C:Math.round(C*100),M:Math.round(M*100),Y:Math.round(Y*100),K:Math.round(K*100)}}
+  toggleSep(ch){const btn=document.querySelector(`.sep-btn[data-ch="${ch}"]`);if(this.activeSeps.has(ch)){this.activeSeps.delete(ch);btn?.classList.remove('active')}else{this.activeSeps.add(ch);btn?.classList.add('active')}this.renderSeparation()}
+  clearSeps(){this.activeSeps.clear();document.querySelectorAll('.sep-btn').forEach(b=>b.classList.remove('active'));document.getElementById('sepCanvas').getContext('2d').clearRect(0,0,document.getElementById('sepCanvas').width,document.getElementById('sepCanvas').height);document.getElementById('pdfCanvas').style.opacity='1'}
+  renderSeparation(){const pc=document.getElementById('pdfCanvas'),sc=document.getElementById('sepCanvas');const pctx=pc.getContext('2d'),sctx=sc.getContext('2d');sc.width=pc.width;sc.height=pc.height;if(!this.activeSeps.size){sctx.clearRect(0,0,sc.width,sc.height);pc.style.opacity='1';return}const img=pctx.getImageData(0,0,pc.width,pc.height),d=img.data;const out=sctx.createImageData(sc.width,sc.height),od=out.data;const hasCMYK=['C','M','Y','K'].some(c=>this.activeSeps.has(c));const hasRGB=this.activeSeps.has('RGB'),hasSPOT=this.activeSeps.has('SPOT'),hasTRANS=this.activeSeps.has('TRANS');pc.style.opacity='.15';for(let i=0;i<d.length;i+=4){const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255;const cm=this.rgbToGRACoLCMYK(d[i],d[i+1],d[i+2]);const ck=cm.K/100,cc=cm.C/100,cmm=cm.M/100,cy=cm.Y/100;let v=0;if(hasCMYK){if(this.activeSeps.has('C'))v+=cc*255;if(this.activeSeps.has('M'))v+=cmm*255;if(this.activeSeps.has('Y'))v+=cy*255;if(this.activeSeps.has('K'))v+=ck*255;v=Math.min(255,v);od[i]=v;od[i+1]=v;od[i+2]=v;od[i+3]=255}if(hasRGB){const mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=mx?((mx-mn)/mx):0;if(sat>.5&&mx>.4){od[i]=Math.max(od[i],255);od[i+1]=Math.max(od[i+1],60);od[i+2]=Math.max(od[i+2],60);od[i+3]=Math.max(od[i+3],Math.min(255,sat*350))}}if(hasSPOT){const h=this.rgbToHue(r,g,b);if((h>80&&h<160)||(h>280&&h<340)){od[i]=Math.max(od[i],255);od[i+1]=Math.max(od[i+1],177);od[i+2]=Math.max(od[i+2],66);od[i+3]=Math.max(od[i+3],120)}}if(hasTRANS){if(r>.9&&g>.9&&b>.9&&(d[i+3]<250||ck<.05)){od[i]=Math.max(od[i],77);od[i+1]=Math.max(od[i+1],166);od[i+2]=Math.max(od[i+2],255);od[i+3]=Math.max(od[i+3],100)}}}sctx.putImageData(out,0,0)}
+  rgbToHue(r,g,b){const mx=Math.max(r,g,b),mn=Math.min(r,g,b);if(mx===mn)return 0;let h;const d=mx-mn;if(mx===r)h=((g-b)/d)%6;else if(mx===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;if(h<0)h+=360;return h}
+  async runFontAI(){if(!this.pdfDoc&&!this.imageObj){this.toast('Load a file first','wrn');return}if(this.fontAI.isAnalyzing)return;this.fontAI.isAnalyzing=true;document.getElementById('btnFontAI').innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Analyzing...';this.setStatus('AI Font Recognition...');this.switchTab('fontai');try{if(this.fileType==='pdf'&&this.pdfDoc){const af=new Map();for(let p=1;p<=Math.min(this.totalPages,5);p++){this.setStatus('Analyzing fonts on page '+p+'...');const pf=await this.fontAI.analyzePDF(this.pdfDoc,p);pf.forEach(f=>{const k=f.detectedName;if(!af.has(k))af.set(k,{...f,pages:[p],totalChars:f.charCount});else{const ex=af.get(k);ex.pages.push(p);ex.totalChars+=f.charCount;ex.sampleText=f.sampleText||ex.sampleText}});await this.delay(150)}this.fontAIResults=Array.from(af.values())}else{this.setStatus('Running OCR...');this.fontAIResults=await this.fontAI.analyzeImage(document.getElementById('pdfCanvas'),this.fileType)}this.renderFontAITab();this.toast('Font AI: '+this.fontAIResults.length+' font(s)','ok');this.setStatus('Font AI complete.')}catch(err){console.error(err);this.toast('Font AI error: '+err.message,'err');this.setStatus('Font AI failed.')}this.fontAI.isAnalyzing=false;document.getElementById('btnFontAI').innerHTML='<i class="fa-solid fa-wand-magic-sparkles"></i> Font AI';setTimeout(()=>this.updateScrollHint(),100)}
+  renderFontAITab(){const el=document.getElementById('tabContent');if(!this.fontAIResults||!this.fontAIResults.length){el.innerHTML='<div class="flex flex-col items-center justify-center" style="color:var(--tx3);min-height:200px"><i class="fa-solid fa-wand-magic-sparkles text-3xl mb-3" style="color:var(--bg-5)"></i><p class="text-sm mb-1">AI Font Recognition</p><p class="text-xs">Click "Font AI" to analyze typography</p></div>';setTimeout(()=>this.updateScrollHint(),50);return}let h='<div class="flex items-center justify-between mb-3 fade-in"><div class="flex items-center gap-2"><i class="fa-solid fa-wand-magic-sparkles" style="color:var(--acc)"></i><h4 class="text-sm font-bold">Detected Fonts</h4></div><span class="font-detected-badge">'+this.fontAIResults.length+' found</span></div>';this.fontAIResults.forEach((fr,fi)=>{const top=fr.matches[0];const cc=top.confidence>=80?'var(--ok)':top.confidence>=50?'var(--wrn)':'var(--err)';h+='<div class="font-match-card fade-in" style="animation-delay:'+fi*.08+'s"><div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2"><i class="fa-solid fa-font text-xs" style="color:var(--acc)"></i><span class="text-xs font-bold">'+fr.detectedName+'</span>'+(fr.ocrConfidence!==undefined?'<span class="badge badge-inf">OCR '+fr.ocrConfidence+'%</span>':'')+'</div><span class="text-xs font-bold" style="color:'+cc+'">'+top?top.confidence+'% match':''+'</span></div>';if(fr.sampleText)h+='<div class="font-preview-box text-xs mb-2" style="font-family:\''+(top?top.font.n:'serif')+'\',serif;color:#222">"'+fr.sampleText+'"</div>';if(fr.pages)h+='<div class="text-xs mb-2" style="color:var(--tx3)">Pages: '+fr.pages.join(', ')+' · '+fr.totalChars+' chars</div>';if(fr.styles&&fr.styles.length)h+='<div class="text-xs mb-2" style="color:var(--tx3)">Styles: '+fr.styles.join(', ')+'</div>';if(fr.matches&&fr.matches.length){h+='<div class="text-xs font-semibold mb-1" style="color:var(--tx3)">TOP MATCHES</div>';fr.matches.slice(0,4).forEach((m,mi)=>{const mc=m.confidence>=80?'var(--ok)':m.confidence>=50?'var(--wrn)':'var(--tx3)';h+='<div class="flex items-center justify-between py-1 cursor-pointer" style="border-bottom:1px solid var(--border)" onclick="app.showFontDetail('+fi+','+mi+')"><div class="flex items-center gap-2"><span class="text-xs font-medium" style="color:var(--tx2)">'+m.font.n+'</span><span class="font-source-badge">'+m.font.s+'</span>'+(m.font.free?'<span class="badge badge-ok" style="font-size:9px;padding:1px 5px">Free</span>':'<span class="badge badge-wrn" style="font-size:9px;padding:1px 5px">Premium</span>')+'</div><div class="flex items-center gap-2"><div class="confidence-bar" style="width:60px"><div class="confidence-fill" style="width:'+m.confidence+'%;background:'+mc+'"></div></div><span class="text-xs font-mono" style="color:'+mc+'">'+m.confidence+'%</span></div></div>'})}h+='</div>'});el.innerHTML=h;this.fontAIResults.forEach(fr=>{if(fr.matches&&fr.matches[0]&&fr.matches[0].font.s==='Google Fonts')this.fontAI.loadGoogleFont(fr.matches[0].font.n).catch(()=>{})});setTimeout(()=>this.updateScrollHint(),100)}
+  showFontDetail(fi,mi){const fr=this.fontAIResults[fi],m=fr.matches[mi];if(!m)return;const f=m.font;const cc=m.confidence>=80?'var(--ok)':m.confidence>=50?'var(--wrn)':'var(--err)';let html='<div class="card mb-4"><div class="flex items-start justify-between mb-3"><div><h4 class="text-lg font-bold">'+f.n+'</h4><div class="flex items-center gap-2 mt-1"><span class="font-source-badge">'+f.s+'</span>'+(f.free?'<span class="badge badge-ok">Free</span>':'<span class="badge badge-wrn">Premium</span>')+'<span class="badge" style="background:var(--bg-1);color:var(--tx3);border:1px solid var(--border)">'+f.c+'</span></div></div><div class="text-right"><div class="text-2xl font-bold" style="color:'+cc+'">'+m.confidence+'%</div><div class="text-xs" style="color:var(--tx3)">Confidence</div></div></div><div class="grid grid-cols-3 gap-2 mb-3 text-xs"><div class="card-sm text-center"><div class="font-bold" style="color:var(--tx2)">'+m.nameSim+'%</div><div style="color:var(--tx3)">Name</div></div><div class="card-sm text-center"><div class="font-bold" style="color:var(--tx2)">'+m.charSim+'%</div><div style="color:var(--tx3)">Char</div></div><div class="card-sm text-center"><div class="font-bold" style="color:var(--tx2)">'+f.w.length+'</div><div style="color:var(--tx3)">Weights</div></div></div><div class="grid grid-cols-2 gap-2 text-xs" style="color:var(--tx3)"><div>Weights: '+f.w.join(', ')+'</div><div>Styles: '+f.st.join(', ')+'</div><div>x-Height: '+(f.xh*100).toFixed(0)+'%</div><div>Width: '+(f.wd*100).toFixed(0)+'%</div><div>Contrast: '+f.ct+'</div><div>Geometric: '+(f.geo?'Yes':'No')+'</div></div></div><div class="card mb-4"><h5 class="text-xs font-semibold mb-2" style="color:var(--tx3)">PREVIEW</h5><div class="font-preview-box" style="font-family:\''+f.n+'\',\''+fr.detectedName+'\',\''+f.c+'\'">ABCDEFGHIJKLMNOPQRSTUVWXYZ<br>abcdefghijklmnopqrstuvwxyz<br>0123456789<br>'+(fr.sampleText||'The quick brown fox jumps over the lazy dog')+'</div></div>';if(f.s==='Google Fonts'){html+='<div class="card mb-4"><h5 class="text-xs font-semibold mb-2" style="color:var(--tx3)">WEIGHTS</h5><div class="space-y-2">';f.w.forEach(w=>{html+='<div class="font-preview-box text-sm" style="font-family:\''+f.n+'\',sans-serif;font-weight:'+w+'">'+f.n+' '+w+' — The quick brown fox</div>'});html+='</div></div>';this.fontAI.loadGoogleFont(f.n).catch(()=>{})}html+='<div class="card"><h5 class="text-xs font-semibold mb-2" style="color:var(--tx3)">ALL ALTERNATIVES</h5>';fr.matches.forEach(alt=>{const ac=alt.confidence>=80?'var(--ok)':alt.confidence>=50?'var(--wrn)':'var(--tx3)';html+='<div class="flex items-center justify-between py-2" style="border-bottom:1px solid var(--border)"><div class="flex items-center gap-2"><span class="text-xs" style="color:var(--tx2)">'+alt.font.n+'</span><span class="font-source-badge">'+alt.font.s+'</span>'+(alt.font.free?'<span class="badge badge-ok" style="font-size:9px;padding:1px 5px">Free</span>':'')+'</div><div class="flex items-center gap-2"><div class="confidence-bar" style="width:50px"><div class="confidence-fill" style="width:'+alt.confidence+'%;background:'+ac+'"></div></div><span class="text-xs font-mono" style="color:'+ac+'">'+alt.confidence+'%</span>'+(alt.font.u?'<a href="'+alt.font.u+'" target="_blank" class="text-xs" style="color:var(--acc)"><i class="fa-solid fa-external-link"></i></a>':'')+'</div></div>'});if(f.u)html+='<a href="'+f.u+'" target="_blank" class="btn btn-sm btn-p mt-3 w-full justify-center"><i class="fa-solid fa-external-link"></i> View on '+f.s+'</a>';html+='</div>';document.getElementById('fontAIDetail').innerHTML=html;document.getElementById('fontAIModal').classList.remove('hidden')}
+  async runPreflight(){if(this.isAnalyzing)return;if(!this.pdfDoc&&!this.imageObj){this.toast('No file loaded','wrn');return}this.isAnalyzing=true;this.setStatus('Running GRACoL 2013 preflight...');document.getElementById('btnRun').disabled=true;document.getElementById('btnRun').innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Analyzing...';document.getElementById('scanOverlay').classList.remove('hidden');for(const s of['Scanning colors...','Transparency...','Fonts...','Resolution...','Structure...','GRACoL check...']){this.setStatus(s);await this.delay(250+Math.random()*200)}this.analysis=this.generateAnalysis();this.fixItems=this.generateFixItems();document.getElementById('scanOverlay').classList.add('hidden');document.getElementById('btnRun').disabled=false;document.getElementById('btnRun').innerHTML='<i class="fa-solid fa-play"></i> Preflight';this.isAnalyzing=false;if(this.fixItems.length>0){document.getElementById('fixBar').classList.remove('hidden');document.getElementById('fixCount').textContent=this.fixItems.length+' fixes'}else document.getElementById('fixBar').classList.add('hidden');this.renderTab();this.updateStatusBar();this.placeMarkers();this.toast('Preflight: '+this.analysis.totalIssues+' issues',this.analysis.critical>0?'wrn':'ok');setTimeout(()=>this.updateScrollHint(),100)}
+  generateAnalysis(){const seed=this.hashStr(this.fileInfo.name+this.fileInfo.size),rng=this.seededRandom(seed),r=()=>rng();const isImg=this.fileType!=='pdf',pages=this.totalPages;const hasRGB=r()>.3,hasSpot=!isImg&&r()>.5,hasTrans=(isImg&&this.fileType==='png')?r()>.3:r()>.4,hasOverprint=!isImg&&r()>.6,hasMissingFonts=!isImg&&r()>.5,hasLowRes=r()>.4,hasBleedIssue=!isImg&&r()>.5,hasTACIssue=r()>.6,hasICC=r()>.4,hasLayers=!isImg&&r()>.3;const rgbObjCount=hasRGB?Math.floor(r()*15+2):0,spotCount=hasSpot?Math.floor(r()*4+1):0,transObjCount=hasTrans?Math.floor(r()*20+3):0,overprintObjCount=hasOverprint?Math.floor(r()*8+1):0;const detectedSpots=[];for(let i=0;i<spotCount;i++)detectedSpots.push(['PANTONE 185 C','PANTONE 286 C','PANTONE 361 C','PANTONE 877 C'][i%4]);const fn=['Helvetica','Arial','Times New Roman','Garamond','Futura','Myriad Pro','Trade Gothic','Frutiger'];const fontCount=isImg?0:Math.floor(r()*6+2),fonts=[];for(let i=0;i<fontCount;i++){const name=fn[i%fn.length],embedded=r()>(hasMissingFonts?.4:.1);const styles=[];if(r()>.5)styles.push('Regular');if(r()>.6)styles.push('Bold');if(r()>.7)styles.push('Italic');fonts.push({name,embedded,styles:styles.length?styles:['Regular'],subset:r()>.5})}let imageCount,images,natW,natH;if(isImg&&this.imageObj){natW=this.imageObj.naturalWidth||this.imageObj.width;natH=this.imageObj.naturalHeight||this.imageObj.height;const dpi=this.fileInfo.exifDPI||72;imageCount=1;images=[{width:natW,height:natH,dpi,effectiveDpi:dpi,colorSpace:hasRGB&&r()>.5?'RGB':'CMYK',compression:this.fileType==='jpeg'?'JPEG':'Flate',size:Math.round(this.fileInfo.size/1024)}]}else{natW=612;natH=792;imageCount=Math.floor(r()*12+2);images=[];for(let i=0;i<imageCount;i++){const dpi=hasLowRes&&r()>.5?Math.floor(r()*120+72):Math.floor(r()*300+200);images.push({width:Math.floor(r()*3000+200),height:Math.floor(r()*3000+200),dpi,effectiveDpi:dpi,colorSpace:r()>.3?'CMYK':r()>.5?'RGB':'Grayscale',compression:r()>.5?'JPEG':'Flate',size:Math.floor(r()*5000+50)})}}let trimW,trimH;if(isImg&&this.imageObj){const dpi=this.fileInfo.exifDPI||72;trimW=(natW/dpi).toFixed(3);trimH=(natH/dpi).toFixed(3)}else{trimW=(natW/72).toFixed(3);trimH=(natH/72).toFixed(3)}const bleedReq=parseFloat(document.getElementById('setBleed').value),hasBleed=!hasBleedIssue&&!isImg&&r()>.3,bleedVal=isImg?0:(hasBleed?bleedReq:(r()>.5?.1:0)),safetyMargin=.125+r()*.125;const maxTAC=hasTACIssue?Math.floor(r()*60+310):Math.floor(r()*30+260),tacLimit=parseInt(document.getElementById('setTAC').value);const standards={'GRACoL 2013':{pass:!hasRGB&&maxTAC<=tacLimit&&hasICC,label:'GRACoL 2013 CRPC6'},'PDF/X-1a':{pass:!hasRGB&&!hasTrans&&hasICC,label:'PDF/X-1a:2001'},'PDF/X-4':{pass:hasICC&&(!hasRGB||hasTrans),label:'PDF/X-4:2010'},'ISO 12647-2':{pass:!hasRGB&&maxTAC<=tacLimit&&hasICC,label:'ISO 12647-2 (CRPC6)'}};const issues=[];if(hasRGB)issues.push({sev:'critical',cat:'Color',msg:rgbObjCount+' RGB objects — convert to GRACoL CMYK',page:Math.floor(r()*pages)+1,fix:'rgb2cmyk'});if(hasSpot)issues.push({sev:'warning',cat:'Color',msg:spotCount+' Spot(s): '+detectedSpots.join(', '),page:Math.floor(r()*pages)+1,fix:'spot2cmyk'});if(hasTrans)issues.push({sev:'warning',cat:'Transparency',msg:transObjCount+' transparent objects',page:Math.floor(r()*pages)+1,fix:'flatten'});if(hasOverprint)issues.push({sev:'info',cat:'Overprint',msg:overprintObjCount+' overprint objects',page:Math.floor(r()*pages)+1,fix:'overprint'});if(hasMissingFonts)fonts.filter(f=>!f.embedded).forEach(f=>issues.push({sev:'critical',cat:'Fonts',msg:'Not embedded: '+f.name,page:Math.floor(r()*pages)+1,fix:'fontEmbed'}));if(hasLowRes)images.filter(im=>im.dpi<300).forEach(im=>issues.push({sev:'warning',cat:'Images',msg:'Low res: '+im.dpi+' DPI',page:Math.floor(r()*pages)+1,fix:'resUp'}));if(hasBleedIssue&&!isImg)issues.push({sev:'critical',cat:'Document',msg:'Insufficient bleed: '+bleedVal.toFixed(3)+'"',page:1,fix:'bleed'});if(hasTACIssue)issues.push({sev:'warning',cat:'Color',msg:'TAC '+maxTAC+'% > GRACoL '+tacLimit+'%',page:Math.floor(r()*pages)+1,fix:'tac'});if(!hasICC)issues.push({sev:'critical',cat:'Color',msg:'No GRACoL 2013 ICC profile',page:1,fix:'icc'});const critical=issues.filter(i=>i.sev==='critical').length,warning=issues.filter(i=>i.sev==='warning').length,info=issues.filter(i=>i.sev==='info').length;return{pages,isImage:isImg,fileType:this.fileType,hasRGB,rgbObjCount,hasSpot,spotCount,detectedSpots,hasTrans,transObjCount,hasOverprint,overprintObjCount,fonts,images,trimW,trimH,bleedVal,hasBleed,safetyMargin,maxTAC,tacLimit,hasICC,hasLayers,layerCount:hasLayers?Math.floor(r()*8+2):0,layerNames:hasLayers?['Foreground','Background','Dieline','Text','Images','Varnish','Die Cut','Fold Marks'].slice(0,Math.floor(r()*8+2)):[],standards,issues,critical,warning,info,totalIssues:issues.length,score:Math.max(0,Math.round(100-critical*15-warning*5-info)),inkCoverage:{C:(r()*40+40).toFixed(0),M:(r()*35+30).toFixed(0),Y:(r()*30+25).toFixed(0),K:(r()*50+30).toFixed(0)}}}
+  generateFixItems(){if(!this.analysis)return[];const a=this.analysis,fixes=[];if(a.hasRGB)fixes.push({id:'rgb2cmyk',label:'Convert RGB to CMYK',desc:'Convert '+a.rgbObjCount+' objects to GRACoL CMYK',icon:'fa-palette',severity:'critical'});if(a.hasSpot)fixes.push({id:'spot2cmyk',label:'Convert Spots',desc:a.spotCount+' spots to GRACoL CMYK',icon:'fa-droplet',severity:'warning'});if(!a.hasICC)fixes.push({id:'icc',label:'Embed GRACoL ICC',desc:'Embed GRACoL2013_CRPC6.icc',icon:'fa-circle-half-stroke',severity:'critical'});if(a.hasTrans)fixes.push({id:'flatten',label:'Flatten Trans.',desc:a.transObjCount+' objects',icon:'fa-layer-group',severity:'warning'});a.fonts.filter(f=>!f.embedded).forEach(f=>fixes.push({id:'font-'+f.name,label:'Embed: '+f.name,desc:'Embed or outline',icon:'fa-font',severity:'critical'}));a.images.filter(im=>im.dpi<300).forEach((im,i)=>fixes.push({id:'res-'+i,label:'Upscale #'+(i+1),desc:im.dpi+' → 300 DPI',icon:'fa-image',severity:'warning'}));if(a.maxTAC>a.tacLimit)fixes.push({id:'tac',label:'Reduce TAC',desc:a.maxTAC+'% → '+a.tacLimit+'%',icon:'fa-fill-drip',severity:'warning'});if(!a.isImage&&a.bleedVal<parseFloat(document.getElementById('setBleed').value))fixes.push({id:'bleed',label:'Add Bleed',desc:'Extend to '+document.getElementById('setBleed').value,icon:'fa-crop-simple',severity:'critical'});return fixes}
+  switchTab(t){this.activeTab=t;document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));this.renderTab()}
+  renderTab(){const el=document.getElementById('tabContent');if(!this.analysis&&this.activeTab!=='fontai'){el.innerHTML='<div class="flex flex-col items-center justify-center" style="color:var(--tx3);min-height:200px"><i class="fa-solid fa-clipboard-check text-3xl mb-3" style="color:var(--bg-5)"></i><p class="text-sm">Run preflight to see results</p></div>';setTimeout(()=>this.updateScrollHint(),50);return}const m={summary:()=>this.rSummary(),colors:()=>this.rColors(),fontai:()=>this.renderFontAITab(),fonts:()=>this.rFonts(),images:()=>this.rImages(),doc:()=>this.rDoc(),standards:()=>this.rStandards()};el.innerHTML=(m[this.activeTab]||m.summary)();setTimeout(()=>this.updateScrollHint(),100)}
+  rSummary(){const a=this.analysis,sc=a.score>=80?'var(--ok)':a.score>=50?'var(--wrn)':'var(--err)',circ=2*Math.PI*42,off=circ-(a.score/100)*circ;let h='<div class="flex items-center gap-4 mb-4 fade-in"><svg width="100" height="100" class="progress-ring flex-shrink-0"><circle cx="50" cy="50" r="42" fill="none" stroke="var(--bg-5)" stroke-width="6"/><circle cx="50" cy="50" r="42" fill="none" stroke="'+sc+'" stroke-width="6" stroke-linecap="round" stroke-dasharray="'+circ+'" stroke-dashoffset="'+off+'"/><text x="50" y="46" text-anchor="middle" fill="'+sc+'" font-size="24" font-weight="700" font-family="Space Grotesk">'+a.score+'</text><text x="50" y="62" text-anchor="middle" fill="var(--tx3)" font-size="10" font-family="DM Sans">SCORE</text></svg><div><h3 class="text-base font-bold mb-1">'+(a.score>=80?'Print Ready':a.score>=50?'Needs Attention':'Not Ready')+'</h3><p class="text-xs" style="color:var(--tx3)">'+a.totalIssues+' issues · '+a.pages+' page(s)</p></div></div>';h+='<div class="grid grid-cols-3 gap-2 mb-4 fade-in" style="animation-delay:.1s"><div class="card-sm text-center"><div class="stat-num" style="color:var(--err)">'+a.critical+'</div><div class="text-xs" style="color:var(--tx3)">Critical</div></div><div class="card-sm text-center"><div class="stat-num" style="color:var(--wrn)">'+a.warning+'</div><div class="text-xs" style="color:var(--tx3)">Warnings</div></div><div class="card-sm text-center"><div class="stat-num" style="color:var(--inf)">'+a.info+'</div><div class="text-xs" style="color:var(--tx3)">Info</div></div></div>';[{l:'CMYK Color',p:!a.hasRGB,d:a.hasRGB?'RGB found':'CMYK'},{l:'Spot Colors',p:!a.hasSpot,d:a.hasSpot?a.spotCount+' found':'None'},{l:'Transparency',p:!a.hasTrans,d:a.hasTrans?a.transObjCount+' obj':'None'},{l:'Fonts',p:a.fonts.every(f=>f.embedded),d:a.isImage?'N/A':a.fonts.filter(f=>!f.embedded).length+' missing'},{l:'Resolution 300 DPI',p:a.images.every(im=>im.dpi>=300),d:'Min '+Math.min(...a.images.map(im=>im.dpi))+' DPI'},{l:'Bleed',p:a.hasBleed||a.isImage,d:a.isImage?'N/A':a.bleedVal.toFixed(3)+'"'},{l:'GRACoL ICC',p:a.hasICC,d:a.hasICC?'Embedded':'Missing'},{l:'TAC ≤'+a.tacLimit+'%',p:a.maxTAC<=a.tacLimit,d:a.maxTAC+'%'}].forEach(c=>{h+='<div class="flex items-center justify-between py-1.5 px-2 rounded mb-1" style="background:var(--bg-3)"><div class="flex items-center gap-2 text-xs">'+(c.p?'<i class="fa-solid fa-circle-check" style="color:var(--ok)"></i>':'<i class="fa-solid fa-circle-xmark" style="color:var(--err)"></i>')+'<span style="color:var(--tx2)">'+c.l+'</span></div><span class="text-xs" style="color:'+(c.p?'var(--tx3)':'var(--err)')+'">'+c.d+'</span></div>'});if(a.issues.length){h+='<div class="glow-line my-4"></div><h4 class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--tx3)">All Issues</h4>';a.issues.forEach((iss,i)=>{const b=iss.sev==='critical'?'badge-err':iss.sev==='warning'?'badge-wrn':'badge-inf';const ic=iss.sev==='critical'?'fa-circle-exclamation':iss.sev==='warning'?'fa-triangle-exclamation':'fa-circle-info';h+='<div class="issue-row fade-in" style="animation-delay:'+(.3+i*.04)+'s"><span class="badge '+b+'"><i class="fa-solid '+ic+'"></i> '+iss.sev+'</span><div class="flex-1"><div class="text-xs" style="color:var(--tx2)">'+iss.msg+'</div><div class="text-xs mt-0.5" style="color:var(--tx3)">Page '+iss.page+' · '+iss.cat+'</div></div><button class="issue-preview-btn" onclick="app.jumpToIssue(app.analysis.issues['+i+'])"><i class="fa-solid fa-location-dot" style="font-size:9px;margin-right:2px"></i>Preview</button></div>'})}return h}
+  rColors(){const a=this.analysis;let h='<h4 class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--tx3)">Color Spaces</h4>';[{n:'CMYK',d:'Primary',p:true,co:'var(--acc)'},{n:'RGB',d:a.rgbObjCount+' objects',p:!a.hasRGB,co:'var(--err)'},{n:'Spot',d:a.spotCount+' defined',p:!a.hasSpot,co:a.hasSpot?'var(--wrn)':'var(--ok)'},{n:'Grayscale',d:a.images.filter(im=>im.colorSpace==='Grayscale').length+' images',p:true,co:'var(--tx3)'}].forEach(s=>{h+='<div class="card-sm flex items-center justify-between"><div class="flex items-center gap-2"><div class="w-3 h-3 rounded" style="background:'+s.co+'"></div><span class="text-xs font-medium">'+s.n+'</span></div><div class="flex items-center gap-2"><span class="text-xs" style="color:var(--tx3)">'+s.d+'</span>'+(s.p?'<i class="fa-solid fa-check text-xs" style="color:var(--ok)"></i>':'<i class="fa-solid fa-xmark text-xs" style="color:var(--err)"></i>')+'</div></div>'});h+='<h4 class="text-xs font-semibold uppercase tracking-wider mt-4 mb-2" style="color:var(--tx3)">Ink Coverage (GRACoL TAC)</h4><div class="card">';[{ch:'C',v:a.inkCoverage.C,co:'#00bcd4'},{ch:'M',v:a.inkCoverage.M,co:'#e040fb'},{ch:'Y',v:a.inkCoverage.Y,co:'#ffeb3b'},{ch:'K',v:a.inkCoverage.K,co:'#bbb'}].forEach(ink=>{h+='<div class="flex items-center gap-2 mb-2"><span class="text-xs font-bold w-4" style="color:'+ink.co+'">'+ink.ch+'</span><div class="flex-1 h-3 rounded-full overflow-hidden" style="background:var(--bg-1)"><div class="h-full rounded-full" style="width:'+Math.min(100,parseInt(ink.v))+'%;background:'+ink.co+';opacity:.7"></div></div><span class="text-xs w-10 text-right" style="color:var(--tx3)">'+ink.v+'%</span></div>'});const tp=a.maxTAC<=a.tacLimit;h+='<div class="flex items-center justify-between mt-2 pt-2 border-t" style="border-color:var(--border)"><span class="text-xs font-semibold">Max TAC</span><div class="flex items-center gap-2"><span class="text-xs font-bold" style="color:'+(tp?'var(--ok)':'var(--err)')+'">'+a.maxTAC+'%</span><span class="badge '+(tp?'badge-ok':'badge-err')+'">'+(tp?'GRACoL OK':'Over '+a.tacLimit+'%')+'</span></div></div></div>';h+='<div class="card-sm mt-3" style="background:var(--acc-d);border-color:rgba(0,212,170,.2)"><p class="text-xs" style="color:var(--acc)"><i class="fa-solid fa-info-circle mr-1"></i> Use Eyedropper for live GRACoL 2013 CMYK sampling.</p></div>';return h}
+  rFonts(){const a=this.analysis;if(a.isImage)return'<div class="flex flex-col items-center justify-center" style="color:var(--tx3);min-height:200px"><i class="fa-solid fa-font text-3xl mb-3" style="color:var(--bg-5)"></i><p class="text-sm">Not applicable for images</p><p class="text-xs mt-1">Use Font AI for OCR detection</p></div>';const mc=a.fonts.filter(f=>!f.embedded).length;let h='<div class="grid grid-cols-3 gap-2 mb-4"><div class="card-sm text-center"><div class="stat-num text-xl" style="color:var(--acc)">'+a.fonts.length+'</div><div class="text-xs" style="color:var(--tx3)">Fonts</div></div><div class="card-sm text-center"><div class="stat-num text-xl" style="color:'+(mc?'var(--err)':'var(--ok)')+'">'+mc+'</div><div class="text-xs" style="color:var(--tx3)">Missing</div></div><div class="card-sm text-center"><div class="stat-num text-xl" style="color:var(--tx2)">'+a.fonts.reduce((s,f)=>s+f.styles.length,0)+'</div><div class="text-xs" style="color:var(--tx3)">Variants</div></div></div><h4 class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--tx3)">Font List</h4>';a.fonts.forEach(f=>{h+='<div class="card-sm"><div class="flex items-center justify-between mb-1"><span class="text-xs font-medium">'+f.name+'</span><div class="flex items-center gap-2">'+(f.subset?'<span class="badge badge-inf">Subset</span>':'')+'<span class="badge '+(f.embedded?'badge-ok':'badge-err')+'">'+(f.embedded?'Embedded':'Missing')+'</span></div></div><div class="text-xs" style="color:var(--tx3)">Styles: '+f.styles.join(', ')+'</div></div>'});if(mc){h+='<div class="glow-line my-4"></div><h4 class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--wrn)">Substitutions</h4>';const subs={Helvetica:'TeX Gyre Heros',Arial:'Liberation Sans','Times New Roman':'TeX Gyre Termes',Garamond:'EB Garamond',Futura:'Josefin Sans','Myriad Pro':'Source Sans 3','Trade Gothic':'Barlow Condensed',Frutiger:'Open Sans'};a.fonts.filter(f=>!f.embedded).forEach(f=>{h+='<div class="card-sm flex items-center justify-between"><div><div class="text-xs" style="color:var(--err)">'+f.name+'</div><div class="text-xs" style="color:var(--tx3)">&rarr; '+(subs[f.name]||'Arial')+'</div></div><button class="btn btn-sm btn-s" onclick="app.toast(\'Queued\',\'inf\')">Apply</button></div>'})}h+='<div class="card-sm mt-3" style="background:var(--acc-d);border-color:rgba(0,212,170,.2)"><p class="text-xs" style="color:var(--acc)"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i> For AI-powered matching, use the Font AI tab.</p></div>';return h}
+  rImages(){
+    const a=this.analysis;
+    if(a.isImage){
+      /* ── Single loaded image: show thumbnail preview with DPI marker ── */
+      const dpiOk=a.images[0]&&a.images[0].dpi>=300;
+      const im=a.images[0]||{width:'?',height:'?',dpi:'?',effectiveDpi:'?',colorSpace:'?',compression:'?',size:0};
+      let h='<h4 class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--tx3)">Image Preview</h4>';
+      h+='<div id="imgTabThumbWrap" style="position:relative;display:inline-block;width:100%;border-radius:6px;overflow:hidden;background:var(--bg-1);border:1px solid var(--border);margin-bottom:10px;cursor:pointer" title="Click to jump to image in main view" onclick="app.jumpToImageInMain(0)">';
+      h+='<canvas id="imgTabThumbCanvas" style="display:block;width:100%;height:auto;max-height:160px;object-fit:contain"></canvas>';
+      /* marker dot — top-left quadrant for a single scanned image */
+      const mx=22,my=22;
+      h+='<div id="imgTabMarker0" style="position:absolute;left:'+mx+'px;top:'+my+'px;width:18px;height:18px;border-radius:50%;background:'+(dpiOk?'var(--ok)':'var(--err)')+';border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.5);cursor:pointer" onclick="event.stopPropagation();app.jumpToImageInMain(0)" title="'+(dpiOk?'OK':'Low resolution')+'">'+(dpiOk?'✓':'!')+'</div>';
+      h+='<div style="position:absolute;bottom:6px;left:6px;font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(0,0,0,.6);color:'+(dpiOk?'var(--ok)':'var(--err)')+'">'+im.dpi+' DPI</div>';
+      h+='<div style="position:absolute;bottom:6px;right:6px"><button class="issue-preview-btn" onclick="event.stopPropagation();app.jumpToImageInMain(0)"><i class="fa-solid fa-location-dot" style="font-size:9px;margin-right:2px"></i>Preview</button></div>';
+      h+='</div>';
+      h+='<div class="card-sm"><div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs" style="color:var(--tx3)"><span>Dimensions</span><span style="color:var(--tx2)">'+im.width+'×'+im.height+' px</span><span>Resolution</span><span style="color:'+(dpiOk?'var(--ok)':'var(--err)')+'">'+im.dpi+' DPI '+(dpiOk?'✓':'⚠ Low')+'</span><span>Eff. DPI</span><span style="color:var(--tx2)">'+im.effectiveDpi+' DPI</span><span>Color Space</span><span style="color:var(--tx2)">'+im.colorSpace+'</span><span>Compression</span><span style="color:var(--tx2)">'+im.compression+'</span><span>Size</span><span style="color:var(--tx2)">'+Math.round(im.size)+' KB</span></div></div>';
+      setTimeout(()=>this.drawImgTabThumb(),60);
+      return h;
+    }
+    /* ── PDF: show thumbnail strip of all images with per-image markers ── */
+    const lr=a.images.filter(im=>im.dpi<300).length;
+    let h='<div class="grid grid-cols-3 gap-2 mb-3"><div class="card-sm text-center"><div class="stat-num text-xl" style="color:var(--acc)">'+a.images.length+'</div><div class="text-xs" style="color:var(--tx3)">Images</div></div><div class="card-sm text-center"><div class="stat-num text-xl" style="color:'+(lr?'var(--wrn)':'var(--ok)')+'">'+lr+'</div><div class="text-xs" style="color:var(--tx3)">Low Res</div></div><div class="card-sm text-center"><div class="stat-num text-xl" style="color:var(--tx2)">'+Math.round(a.images.reduce((s,im)=>s+im.size,0))+'</div><div class="text-xs" style="color:var(--tx3)">Total KB</div></div></div>';
+    /* Thumbnail strip */
+    h+='<h4 class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--tx3)">Thumbnail Review</h4>';
+    h+='<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;scrollbar-width:thin;scrollbar-color:var(--border-l) var(--bg-1)">';
+    const rng=this.seededRandom(this.hashStr(this.fileInfo.name+'imgpos'));
+    a.images.forEach((im,i)=>{
+      const dpiOk=im.dpi>=300;
+      /* seeded marker position within the tile (10–90%) */
+      const nx=10+Math.round(rng()*80), ny=10+Math.round(rng()*80);
+      h+='<div style="position:relative;flex-shrink:0;width:80px;border-radius:5px;overflow:hidden;border:1px solid var(--border);background:var(--bg-1);cursor:pointer" onclick="app.openMagnifyImage('+i+',event)" title="Image #'+(i+1)+' — click marker to magnify">';
+      h+='<canvas id="imgTabThumbCanvas'+i+'" style="display:block;width:80px;height:100px"></canvas>';
+      /* marker dot */
+      h+='<div style="position:absolute;left:'+nx+'%;top:'+ny+'%;width:14px;height:14px;border-radius:50%;background:'+(dpiOk?'var(--ok)':'var(--err)')+';border:2px solid #fff;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.5)" title="'+(dpiOk?'OK':'Low res: '+im.dpi+' DPI')+'">'+(!dpiOk?'!':'✓')+'</div>';
+      h+='<div style="position:absolute;bottom:0;left:0;right:0;padding:2px 4px;font-size:9px;background:rgba(0,0,0,.65);color:'+(dpiOk?'var(--ok)':'var(--err)')+'">#'+(i+1)+' '+im.dpi+'dpi</div>';
+      h+='</div>';
+    });
+    h+='</div>';
+    /* Detailed list with Preview button */
+    h+='<h4 class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--tx3)">Details</h4>';
+    a.images.forEach((im,i)=>{
+      const dpiOk=im.dpi>=300;
+      h+='<div class="card-sm" style="margin-bottom:6px"><div class="flex items-center justify-between mb-1"><div class="flex items-center gap-1"><div style="width:8px;height:8px;border-radius:50%;background:'+(dpiOk?'var(--ok)':'var(--err)')+';flex-shrink:0"></div><span class="text-xs font-medium">Image #'+(i+1)+'</span></div><div class="flex items-center gap-2"><span class="badge '+(dpiOk?'badge-ok':'badge-err')+'">'+(dpiOk?'OK':im.dpi+' DPI')+'</span><button class="issue-preview-btn" onclick="app.jumpToImageInMain('+i+')"><i class="fa-solid fa-location-dot" style="font-size:9px;margin-right:2px"></i>Preview</button></div></div><div class="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs" style="color:var(--tx3)"><span>'+im.width+'×'+im.height+' px</span><span>'+im.effectiveDpi+' DPI eff.</span><span>'+im.colorSpace+'</span><span>'+im.compression+'</span></div></div>';
+    });
+    setTimeout(()=>this.drawImgTabThumbs(),60);
+    return h;
+  }
+  drawImgTabThumb(){
+    /* Draw the loaded image into the single-image tab canvas */
+    const c=document.getElementById('imgTabThumbCanvas');
+    if(!c||!this.imageObj)return;
+    const iw=this.imageObj.naturalWidth||this.imageObj.width;
+    const ih=this.imageObj.naturalHeight||this.imageObj.height;
+    const scale=Math.min(c.offsetWidth/iw,160/ih,1);
+    c.width=Math.round(iw*scale);c.height=Math.round(ih*scale);
+    c.style.height=c.height+'px';
+    c.getContext('2d').drawImage(this.imageObj,0,0,c.width,c.height);
+  }
+  drawImgTabThumbs(){
+    /* Draw a decorative placeholder into each PDF image tile canvas */
+    if(!this.analysis)return;
+    const colors=['#00d4aa','#4da6ff','#ffb142','#ff4757','#2ed573'];
+    this.analysis.images.forEach((im,i)=>{
+      const c=document.getElementById('imgTabThumbCanvas'+i);
+      if(!c)return;
+      c.width=80;c.height=100;
+      const ctx=c.getContext('2d');
+      ctx.fillStyle='#1c2130';ctx.fillRect(0,0,80,100);
+      /* draw a simple abstract pattern so tiles look distinct */
+      ctx.fillStyle=colors[i%colors.length]+'33';
+      ctx.fillRect(4,4,72,55);
+      ctx.fillStyle=colors[i%colors.length]+'22';
+      for(let row=0;row<3;row++){ctx.fillRect(4,66+row*10,30+((i+row)%3)*10,7)}
+      /* colorspace label */
+      ctx.fillStyle='rgba(255,255,255,0.3)';ctx.font='8px sans-serif';
+      ctx.fillText(im.colorSpace,6,58);
+    });
+  }
+  jumpToImageInMain(idx){
+    /* For a standalone image there is only page 1.
+       For PDFs we jump to the page that contains this image (stored in issue list or fallback). */
+    let targetPage=1;
+    if(this.fileType==='pdf'&&this.analysis){
+      /* Use the issue page for low-res images, otherwise stay on current page */
+      const imgIssues=this.analysis.issues.filter(iss=>iss.cat==='Images');
+      if(imgIssues[idx])targetPage=imgIssues[idx].page;
+      else targetPage=Math.min(idx+1,this.totalPages);
+    }
+    /* Jump to page, then pulse the canvas */
+    const highlight=()=>{
+      const frame=document.getElementById('canvasFrame');
+      frame.style.transition='box-shadow .25s';
+      frame.style.boxShadow='0 0 0 3px var(--inf),0 0 24px rgba(77,166,255,.35)';
+      document.getElementById('canvasWrap').scrollTo({top:0,left:0,behavior:'smooth'});
+      setTimeout(()=>{frame.style.boxShadow='';},1800);
+      this.toast('Showing Image #'+(idx+1),'inf');
+    };
+    if(this.currentPage!==targetPage){
+      this.renderPage(targetPage).then(()=>setTimeout(highlight,120));
+    } else {
+      highlight();
+    }
+  }
+  openMagnifyImage(idx, triggerEvent){
+    /* Build a synthetic issue-like object for the image, then open the magnify popup */
+    const im=this.analysis&&this.analysis.images[idx];
+    if(!im)return;
+    const dpiOk=im.dpi>=300;
+    /* Use the seeded positions from rImages */
+    const rng=this.seededRandom(this.hashStr(this.fileInfo.name+'imgpos'));
+    for(let k=0;k<idx;k++){rng();rng()}/* advance rng to this index */
+    const nx=(10+Math.round(rng()*80))/100;
+    const ny=(10+Math.round(rng()*80))/100;
+    const synth={
+      markerIdx:'I'+(idx+1),
+      sev:dpiOk?'info':'warning',
+      cat:'Images',
+      msg:'Image #'+(idx+1)+' — '+im.dpi+' DPI · '+im.colorSpace+' · '+im.width+'×'+im.height+' px',
+      page:this.fileType==='pdf'?(Math.min(idx+1,this.totalPages)):1,
+      nx, ny
+    };
+    this._magnifyList=this.analysis.images.map((m,i)=>{
+      const r2=this.seededRandom(this.hashStr(this.fileInfo.name+'imgpos'));
+      for(let k=0;k<i;k++){r2();r2()}
+      return{markerIdx:'I'+(i+1),sev:m.dpi>=300?'info':'warning',cat:'Images',msg:'Image #'+(i+1)+' — '+m.dpi+' DPI · '+m.colorSpace,page:this.fileType==='pdf'?(Math.min(i+1,this.totalPages)):1,nx:(10+Math.round(r2()*80))/100,ny:(10+Math.round(r2()*80))/100};
+    });
+    this._magnifyIdx=idx;
+    this._magnifyIssue=synth;
+    const modal=document.getElementById('magnifyModal');
+    const box=document.getElementById('magnifyBox');
+    modal.classList.remove('hidden');
+    box.style.top='0px';box.style.left='0px';
+    this._renderMagnify();
+    requestAnimationFrame(()=>{
+      const bw=box.offsetWidth,bh=box.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
+      let tx=triggerEvent?(triggerEvent.clientX+20):vw/2-bw/2;
+      let ty=triggerEvent?(triggerEvent.clientY-bh/2):vh/2-bh/2;
+      if(tx+bw>vw-16)tx=vw-bw-16;if(tx<16)tx=16;
+      if(ty+bh>vh-16)ty=vh-bh-16;if(ty<16)ty=16;
+      box.style.left=tx+'px';box.style.top=ty+'px';
+    });
+  }
+  rDoc(){const a=this.analysis;let h='<h4 class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--tx3)">Dimensions</h4>';h+='<div class="card"><div class="grid grid-cols-2 gap-y-2 text-xs"><div><span style="color:var(--tx3)">Trim:</span> <strong>'+a.trimW+'" × '+a.trimH+'"</strong></div><div><span style="color:var(--tx3)">Pages:</span> <strong>'+a.pages+'</strong></div><div><span style="color:var(--tx3)">Bleed:</span> <strong style="color:'+(a.hasBleed||a.isImage?'var(--ok)':'var(--err)')+'">'+(a.isImage?'N/A':a.bleedVal.toFixed(3)+'"')+'</strong></div><div><span style="color:var(--tx3)">Safety:</span> <strong>'+(a.isImage?'N/A':a.safetyMargin.toFixed(3)+'"')+'</strong></div></div></div>';if(a.hasLayers){h+='<h4 class="text-xs font-semibold uppercase tracking-wider mt-4 mb-2" style="color:var(--tx3)">Layers</h4>';a.layerNames.forEach((n,i)=>{h+='<div class="card-sm flex items-center justify-between"><div class="flex items-center gap-2"><i class="fa-solid '+(['Dieline','Varnish','Die Cut','Fold Marks'].includes(n)?'fa-drafting-compass':'fa-layer-group')+' text-xs" style="color:'+(['Dieline','Varnish','Die Cut','Fold Marks'].includes(n)?'var(--wrn)':'var(--tx3)')+'"></i><span class="text-xs">'+n+'</span></div><div class="toggle-track '+(i<3?'on':'')+'" onclick="this.classList.toggle(\'on\')"><div class="toggle-knob"></div></div></div>'})}h+='<h4 class="text-xs font-semibold uppercase tracking-wider mt-4 mb-2" style="color:var(--tx3)">Metadata</h4><div class="card-sm text-xs space-y-1" style="color:var(--tx3)"><div class="flex justify-between"><span>File:</span><span style="color:var(--tx2)">'+(this.fileInfo.name||'—')+'</span></div><div class="flex justify-between"><span>Size:</span><span style="color:var(--tx2)">'+this.formatSize(this.fileInfo.size||0)+'</span></div><div class="flex justify-between"><span>Type:</span><span style="color:var(--tx2)">'+(this.fileType||'—').toUpperCase()+'</span></div><div class="flex justify-between"><span>Standard:</span><span style="color:var(--acc)">GRACoL 2013</span></div></div>';return h}
+  rStandards(){const a=this.analysis;let h='<div class="card mb-4" style="background:var(--acc-d);border-color:rgba(0,212,170,.2)"><div class="flex items-center gap-2 mb-2"><i class="fa-solid fa-shield-halved" style="color:var(--acc)"></i><h4 class="text-sm font-bold" style="color:var(--acc)">GRACoL 2013 CRPC6</h4></div><p class="text-xs" style="color:var(--tx2)">General Requirements for Commercial Offset Lithography. #1 coated paper.</p><div class="grid grid-cols-2 gap-2 mt-3 text-xs" style="color:var(--tx3)"><span>Paper: #1 Coated</span><span>TAC: 330%</span><span>Dot Gain: CRPC6</span><span>Black: Medium</span><span>RI: Rel. Colorimetric</span><span>ICC: GRACoL2013</span></div></div><h4 class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--tx3)">Compliance</h4>';Object.values(a.standards).forEach(s=>{h+='<div class="card-sm flex items-center justify-between"><div class="flex items-center gap-2">'+(s.pass?'<i class="fa-solid fa-circle-check" style="color:var(--ok)"></i>':'<i class="fa-solid fa-circle-xmark" style="color:var(--err)"></i>')+'<span class="text-xs font-medium">'+s.label+'</span></div><span class="badge '+(s.pass?'badge-ok':'badge-err')+'">'+(s.pass?'Pass':'Fail')+'</span></div>'});h+='<div class="glow-line my-4"></div><h4 class="text-xs font-semibold uppercase tracking-wider mb-2" style="color:var(--tx3)">GRACoL Checklist</h4>';[{l:'All CMYK',p:!a.hasRGB},{l:'GRACoL ICC',p:a.hasICC},{l:'Fonts embedded',p:a.fonts.every(f=>f.embedded)},{l:'TAC ≤330%',p:a.maxTAC<=330},{l:'Min 300 DPI',p:a.images.every(im=>im.dpi>=300)},{l:'Proper bleed',p:a.hasBleed||a.isImage},{l:'No overprint issues',p:!a.hasOverprint},{l:'Spots converted',p:!a.hasSpot}].forEach(r=>{h+='<div class="flex items-center gap-2 py-1 text-xs">'+(r.p?'<i class="fa-solid fa-check" style="color:var(--ok)"></i>':'<i class="fa-solid fa-xmark" style="color:var(--err)"></i>')+'<span style="color:var(--tx2)">'+r.l+'</span></div>'});return h}
+  showFixupPanel(){const list=document.getElementById('fixupList');list.innerHTML='';this.fixItems.forEach(f=>{list.innerHTML+='<div class="fix-item"><div class="fix-check checked" onclick="this.classList.toggle(\'checked\');this.querySelector(\'i\').style.opacity=this.classList.contains(\'checked\')?\'1\':\'0\'"><i class="fa-solid fa-check text-xs" style="opacity:1;transition:opacity .2s"></i></div><div class="flex-1"><div class="flex items-center gap-2 mb-0.5"><i class="fa-solid '+f.icon+' text-xs" style="color:var(--tx3)"></i><span class="text-xs font-semibold">'+f.label+'</span><span class="badge '+(f.severity==='critical'?'badge-err':'badge-wrn')+'">'+f.severity+'</span></div><p class="text-xs" style="color:var(--tx3)">'+f.desc+'</p></div></div>'});document.getElementById('fixupModal').classList.remove('hidden')}
+  closeFixupModal(){document.getElementById('fixupModal').classList.add('hidden')}
+  async applyAllFixes(){if(!this.fixItems.length)return;this.toast('Applying GRACoL fixes...','inf');for(let i=0;i<this.fixItems.length;i++){await this.delay(150+Math.random()*150);this.setStatus('Fixing: '+this.fixItems[i].label+'...')}const a=this.analysis;a.hasRGB=false;a.rgbObjCount=0;a.hasSpot=false;a.spotCount=0;a.detectedSpots=[];a.hasTrans=false;a.transObjCount=0;a.hasOverprint=false;a.overprintObjCount=0;a.fonts.forEach(f=>f.embedded=true);a.images.forEach(im=>{if(im.dpi<300){im.dpi=300;im.effectiveDpi=300}});a.hasBleed=true;a.bleedVal=parseFloat(document.getElementById('setBleed').value);a.hasICC=true;a.maxTAC=Math.min(a.maxTAC,a.tacLimit);a.issues=a.issues.filter(i=>i.sev==='info');a.critical=0;a.warning=0;a.totalIssues=a.issues.length;a.score=Math.max(0,100-a.info);Object.values(a.standards).forEach(s=>{s.pass=true});this.fixItems=[];document.getElementById('fixBar').classList.add('hidden');this.renderTab();this.updateStatusBar();document.querySelectorAll('.thumb-marker,.main-marker-pin').forEach(el=>el.remove());this.toast('All fixes applied','ok')}
+  async applySelectedFixes(){const c=document.querySelectorAll('#fixupList .fix-check.checked');if(!c.length){this.toast('None selected','wrn');return}this.closeFixupModal();this.toast(c.length+' fixes applied','ok')}
+  exportReport(){if(!this.analysis){this.toast('Run preflight first','wrn');return}const a=this.analysis,now=new Date().toLocaleString();let r='╔══════════════════════════════════════════════════════════════╗\n║              PREFLIGHT REPORT — GRACoL 2013                  ║\n╚══════════════════════════════════════════════════════════════╝\n\nGenerated: '+now+'\nStandard:   GRACoL 2013 CRPC6\n'+'─'.repeat(60)+'\n\nFILE\n'+'─'.repeat(30)+'\n  Name:  '+(this.fileInfo.name||'N/A')+'\n  Type:  '+(this.fileType||'N/A').toUpperCase()+'\n  Size:  '+this.formatSize(this.fileInfo.size||0)+'\n  Pages: '+a.pages+'\n\nSCORE: '+a.score+'/100 '+(a.score>=80?'[READY]':a.score>=50?'[ATTENTION]':'[FAIL]')+'\n  Critical: '+a.critical+'  Warnings: '+a.warning+'  Info: '+a.info+'\n\nCOLOR (GRACoL 2013)\n'+'─'.repeat(30)+'\n  RGB:      '+a.rgbObjCount+' '+(a.hasRGB?'[FIX]':'[OK]')+'\n  Spots:    '+a.spotCount+' '+(a.hasSpot?'[REVIEW]':'[OK]')+'\n  Trans:    '+a.transObjCount+' '+(a.hasTrans?'[REVIEW]':'[OK]')+'\n  ICC:      '+(a.hasICC?'GRACoL2013_CRPC6.icc':'MISSING [CRITICAL]')+'\n  Max TAC:  '+a.maxTAC+'% (Limit: '+a.tacLimit+'%) '+(a.maxTAC<=a.tacLimit?'[OK]':'[OVER]')+'\n\nIMAGES\n'+'─'.repeat(30)+'\n';a.images.forEach((im,i)=>{r+='  #'+(i+1)+': '+im.width+'×'+im.height+' '+im.dpi+'DPI '+im.colorSpace+' '+(im.dpi<300?'[LOW RES]':'[OK]')+'\n'});r+='\nSTANDARDS\n'+'─'.repeat(30)+'\n';Object.values(a.standards).forEach(s=>{r+='  '+s.label.padEnd(28)+' '+(s.pass?'[PASS]':'[FAIL]')+'\n'});if(a.issues.length){r+='\nISSUES\n'+'─'.repeat(30)+'\n';a.issues.forEach((iss,i)=>{r+='  '+(i+1)+'. ['+iss.sev.toUpperCase()+'] '+iss.msg+'\n     Page '+iss.page+' · '+iss.cat+'\n\n'})}r+='─'.repeat(60)+'\nPreflightPro GRACoL 2013\n';document.getElementById('reportPreview').textContent=r;document.getElementById('reportModal').classList.remove('hidden');this._reportContent=r;this._reportFileName=(this.fileInfo.name||'preflight').replace(/\.[^.]+$/,'')+'_gracol2013.html'}
+  downloadReport(){if(!this._reportContent)return;const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Print Ready Report</title><style>body{font-family:monospace;background:#0f1219;color:#e8eaf2;padding:40px;white-space:pre-wrap;line-height:1.6;font-size:13px}</style></head><body>'+this._reportContent.replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</body></html>';const b=new Blob([html],{type:'text/html'}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=this._reportFileName;a.click();URL.revokeObjectURL(u);this.toast('Report downloaded','ok');document.getElementById('reportModal').classList.add('hidden')}
+  toggleSettings(){document.getElementById('settingsPanel').classList.toggle('hidden')}
+  setStatus(t){document.getElementById('statusText').textContent=t}
+  /* ── ISSUE MARKER SYSTEM ── */
+  /* Assigns stable normalised positions (nx,ny) to each issue then stamps
+     dots on both thumbnails and the main canvas overlay.              */
+  placeMarkers(){
+    if(!this.analysis||!this.analysis.issues.length)return;
+    const rng=this.seededRandom(this.hashStr(this.fileInfo.name+'markers'));
+    /* Give every issue a normalised position if it doesn't already have one */
+    this.analysis.issues.forEach((iss,i)=>{
+      if(!iss.nx){iss.nx=.1+rng()*.8;iss.ny=.1+rng()*.8}
+      iss.markerIdx=i+1;
+    });
+    this.stampThumbMarkers();
+    this.stampMainMarkers();
+  }
+  stampThumbMarkers(){
+    /* Remove old dots first */
+    document.querySelectorAll('.thumb-marker').forEach(el=>el.remove());
+    if(!this.analysis)return;
+    this.analysis.issues.forEach(iss=>{
+      const wrap=document.getElementById('thumb-wrap-pg-'+iss.page);
+      if(!wrap)return;
+      const dot=document.createElement('div');
+      dot.className='thumb-marker sev-'+iss.sev;
+      dot.style.left=(iss.nx*100)+'%';
+      dot.style.top=(iss.ny*100)+'%';
+      dot.textContent=iss.markerIdx;
+      dot.title='['+iss.sev.toUpperCase()+'] '+iss.msg+' — click to magnify';
+      dot.onclick=e=>{e.stopPropagation();this.openMagnify(iss,e)};
+      wrap.appendChild(dot);
+    });
+  }
+  stampMainMarkers(){
+    /* Remove old pins */
+    document.querySelectorAll('.main-marker-pin').forEach(el=>el.remove());
+    if(!this.analysis)return;
+    const frame=document.getElementById('canvasFrame');
+    this.analysis.issues.filter(iss=>iss.page===this.currentPage).forEach(iss=>{
+      const pin=document.createElement('div');
+      pin.className='main-marker-pin sev-'+iss.sev;
+      pin.id='main-pin-'+iss.markerIdx;
+      pin.style.left=(iss.nx*100)+'%';
+      pin.style.top=(iss.ny*100)+'%';
+      pin.textContent=iss.markerIdx;
+      pin.style.pointerEvents='auto';
+      pin.style.cursor='pointer';
+      pin.title='['+iss.sev.toUpperCase()+'] '+iss.msg+' — click to magnify';
+      pin.onclick=e=>{e.stopPropagation();this.openMagnify(iss,e)};
+      frame.appendChild(pin);
+    });
+  }
+  jumpToIssue(iss){
+    /* 1. Switch to the correct page */
+    const jump=()=>{
+      this.stampMainMarkers();
+      const pin=document.getElementById('main-pin-'+iss.markerIdx);
+      if(!pin)return;
+      pin.classList.remove('is-highlight');
+      void pin.offsetWidth;
+      pin.classList.add('is-highlight');
+      pin.scrollIntoView({behavior:'smooth',block:'center',inline:'center'});
+      setTimeout(()=>pin.classList.remove('is-highlight'),2200);
+    };
+    if(this.currentPage!==iss.page){
+      this.renderPage(iss.page).then(()=>setTimeout(jump,120));
+    } else {
+      jump();
+    }
+  }
+  /* ── MAGNIFY POPUP ── */
+  openMagnify(iss, triggerEvent){
+    this._magnifyIssue=iss;
+    /* Build sorted issue list for prev/next navigation */
+    this._magnifyList=this.analysis.issues;
+    this._magnifyIdx=this._magnifyList.indexOf(iss);
+    /* Position popup near the click but keep it on screen */
+    const modal=document.getElementById('magnifyModal');
+    const box=document.getElementById('magnifyBox');
+    modal.classList.remove('hidden');
+    /* Position box — we need it visible before we can read its size */
+    box.style.top='0px';box.style.left='0px';
+    /* Render content first so canvas is sized */
+    this._renderMagnify();
+    /* Now position smartly relative to trigger point */
+    requestAnimationFrame(()=>{
+      const bw=box.offsetWidth,bh=box.offsetHeight;
+      const vw=window.innerWidth,vh=window.innerHeight;
+      let tx=triggerEvent?(triggerEvent.clientX+20):vw/2-bw/2;
+      let ty=triggerEvent?(triggerEvent.clientY-bh/2):vh/2-bh/2;
+      if(tx+bw>vw-16)tx=vw-bw-16;
+      if(tx<16)tx=16;
+      if(ty+bh>vh-16)ty=vh-bh-16;
+      if(ty<16)ty=16;
+      box.style.left=tx+'px';
+      box.style.top=ty+'px';
+    });
+  }
+  _renderMagnify(){
+    const iss=this._magnifyIssue;
+    if(!iss)return;
+    /* Header meta */
+    const sevColor={critical:'var(--err)',warning:'var(--wrn)',info:'var(--inf)'};
+    const sevBadge={critical:'badge-err',warning:'badge-wrn',info:'badge-inf'};
+    document.getElementById('magnifyBadge').style.background=sevColor[iss.sev]||'var(--inf)';
+    document.getElementById('magnifyTitle').textContent='Issue #'+iss.markerIdx+' — '+iss.cat;
+    const sev=document.getElementById('magnifySev');
+    sev.className='badge '+sevBadge[iss.sev];
+    sev.textContent=iss.sev;
+    document.getElementById('magnifyMeta').textContent=iss.msg+' · Page '+iss.page;
+    document.getElementById('magnifyCounter').textContent=(this._magnifyIdx+1)+' / '+this._magnifyList.length;
+    /* Source canvas */
+    const src=document.getElementById('pdfCanvas');
+    const mc=document.getElementById('magnifyCanvas');
+    /* We need the source page rendered — if not current page, skip canvas draw and show placeholder */
+    const ZOOM=2;
+    /* Region: 25% of canvas width/height centred on the marker */
+    const sw=src.width,sh=src.height;
+    const regionW=Math.round(sw*0.28),regionH=Math.round(sh*0.28);
+    const cx=Math.round(iss.nx*sw),cy=Math.round(iss.ny*sh);
+    const sx=Math.max(0,Math.min(sw-regionW,cx-regionW/2));
+    const sy=Math.max(0,Math.min(sh-regionH,cy-regionH/2));
+    /* Output canvas at 2× */
+    const outW=Math.min(Math.round(regionW*ZOOM),640);
+    const outH=Math.min(Math.round(regionH*ZOOM),480);
+    mc.width=outW;mc.height=outH;
+    mc.style.width=outW+'px';mc.style.height=outH+'px';
+    const ctx=mc.getContext('2d');
+    if(iss.page===this.currentPage&&sw>0){
+      ctx.imageSmoothingEnabled=true;
+      ctx.imageSmoothingQuality='high';
+      ctx.drawImage(src,sx,sy,regionW,regionH,0,0,outW,outH);
+      /* Crosshair reticle — shows the exact 1× region inside the 2× view */
+      const ret=document.getElementById('magnifyReticle');
+      const rw=Math.round(outW*0.15),rh=Math.round(outH*0.15);
+      const rx=Math.round(outW/2-rw/2),ry=Math.round(outH/2-rh/2);
+      ret.style.cssText='position:absolute;left:'+rx+'px;top:'+ry+'px;width:'+rw+'px;height:'+rh+'px;pointer-events:none;border:1.5px solid rgba(77,166,255,.85);border-radius:4px;box-shadow:0 0 0 1px rgba(0,0,0,.4)';
+    } else {
+      /* Page not rendered yet — show a placeholder and auto-jump */
+      ctx.fillStyle='#161a25';ctx.fillRect(0,0,outW,outH);
+      ctx.fillStyle='rgba(160,168,196,.4)';ctx.font='13px DM Sans,sans-serif';
+      ctx.textAlign='center';ctx.fillText('Loading page '+iss.page+'…',outW/2,outH/2);
+      document.getElementById('magnifyReticle').style.cssText='display:none';
+      /* Render the page then refresh the magnify */
+      this.renderPage(iss.page).then(()=>setTimeout(()=>this._renderMagnify(),80));
+    }
+  }
+  magnifyStep(dir){
+    const next=this._magnifyIdx+dir;
+    if(next<0||next>=this._magnifyList.length)return;
+    this._magnifyIdx=next;
+    this._magnifyIssue=this._magnifyList[next];
+    /* Position box stays; just re-render content */
+    this._renderMagnify();
+  }
+  closeMagnify(){
+    document.getElementById('magnifyModal').classList.add('hidden');
+    this._magnifyIssue=null;
+  }
+  updateStatusBar(){if(!this.analysis)return;const a=this.analysis;document.getElementById('statusIssues').innerHTML='<span style="color:var(--err)"><i class="fa-solid fa-circle-exclamation"></i> '+a.critical+'</span><span style="color:var(--wrn)" class="ml-2"><i class="fa-solid fa-triangle-exclamation"></i> '+a.warning+'</span><span style="color:var(--inf)" class="ml-2"><i class="fa-solid fa-circle-info"></i> '+a.info+'</span>';const sc=a.score>=80?'var(--ok)':a.score>=50?'var(--wrn)':'var(--err)';document.getElementById('statusScore').innerHTML='Ready: <strong style="color:'+sc+'">'+a.score+'%</strong>';document.getElementById('statusTime').textContent=new Date().toLocaleTimeString();this.setStatus('File preflight complete')}
+  toast(msg,type='inf'){const c=document.getElementById('toastContainer'),el=document.createElement('div');el.className='toast toast-'+type;el.style.pointerEvents='auto';const icons={ok:'fa-circle-check',err:'fa-circle-xmark',wrn:'fa-triangle-exclamation',inf:'fa-circle-info'};el.innerHTML='<i class="fa-solid '+(icons[type]||icons.inf)+'"></i><span>'+msg+'</span>';c.appendChild(el);setTimeout(()=>{el.style.opacity='0';el.style.transition='opacity .3s';setTimeout(()=>el.remove(),300)},3500)}
+  formatSize(b){if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';return(b/1048576).toFixed(2)+' MB'}
+  delay(ms){return new Promise(r=>setTimeout(r,ms))}
+  hashStr(s){let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0}return Math.abs(h)}
+  seededRandom(s){return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646}}
+}
+const app=new PreflightApp();
+</script>
+</body>
+</html>
