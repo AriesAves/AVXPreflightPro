@@ -1,7 +1,7 @@
 {
   "name": "AVX Preflight Pro",
   "short_name": "AVX Preflight",
-  "description": "AVX Print Validation Platform — Internal Staff Tool",
+  "description": "AVX Print Validation Platform",
   "start_url": "/AVX-Preflight-Pro/",
   "scope": "/AVX-Preflight-Pro/",
   "display": "standalone",
