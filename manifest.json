@@ -1,0 +1,27 @@
+{
+  "name": "AVX Preflight Pro",
+  "short_name": "AVX Preflight",
+  "description": "AVX Print Validation Platform — Internal Staff Tool",
+  "start_url": "/AVX-Preflight-Pro/",
+  "scope": "/AVX-Preflight-Pro/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "icons": [
+    {
+      "src": "icons/AVXlogo2 - Copy.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/AVXlogo2.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "en-US"
+}
